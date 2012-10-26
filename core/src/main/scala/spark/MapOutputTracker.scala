@@ -276,8 +276,10 @@ private[spark] object MapOutputTracker {
    * sizes up to 35 GB with at most 10% error.
    */
   def compressSize(size: Long): Byte = {
-    if (size <= 1L) {
+    if (size == 0) {
       0
+    } else if (size == 1) {
+      1
     } else {
       math.min(255, math.ceil(math.log(size) / math.log(LOG_BASE)).toInt).toByte
     }
@@ -288,7 +290,7 @@ private[spark] object MapOutputTracker {
    */
   def decompressSize(compressedSize: Byte): Long = {
     if (compressedSize == 0) {
-      1
+      0
     } else {
       math.pow(LOG_BASE, (compressedSize & 0xFF)).toLong
     }
