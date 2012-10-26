@@ -20,14 +20,17 @@ abstract class NarrowDependency[T](rdd: RDD[T]) extends Dependency(rdd) {
 
 /**
  * Represents a dependency on the output of a shuffle stage.
- * @param shuffleId the shuffle id
  * @param rdd the parent RDD
  * @param partitioner partitioner used to partition the shuffle output
+ * @param statsAccumulator an optional accumulator for computing per-partition statistics
  */
 class ShuffleDependency[K, V](
     @transient rdd: RDD[(K, V)],
-    val partitioner: Partitioner)
+    val partitioner: Partitioner,
+    val statsAccumulator: Option[PartitionStatsAccumulator[(K, V), _, _]])
   extends Dependency(rdd) {
+
+  def this(rdd: RDD[(K, V)], partitioner: Partitioner) = this(rdd, partitioner, None)
 
   val shuffleId: Int = rdd.context.newShuffleId()
 }

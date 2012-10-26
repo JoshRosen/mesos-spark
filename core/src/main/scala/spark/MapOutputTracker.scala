@@ -14,7 +14,7 @@ import akka.util.duration._
 import scala.collection.mutable.HashMap
 import scala.collection.mutable.HashSet
 
-import scheduler.MapStatus
+import scheduler.{ShuffleBlockStatus, MapStatus}
 import spark.storage.BlockManagerId
 import java.util.zip.{GZIPInputStream, GZIPOutputStream}
 
@@ -122,9 +122,34 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
   
   // Remembers which map output locations are currently being fetched on a worker
   val fetching = new HashSet[Int]
-  
-  // Called on possibly remote nodes to get the server URIs and output sizes for a given shuffle
-  def getServerStatuses(shuffleId: Int, reduceId: Int): Array[(BlockManagerId, Long)] = {
+
+  /**
+   * Called on possibly remote nodes to get the server URIs and output sizes for a given
+   * partition of a shuffle.
+   * @param shuffleId the shuffle id
+   * @param reduceId the reducer partition
+   * @return An array of the locations, sizes, and custom statistics for the blocks comprising the
+   *         specified partition of the shuffle output, indexed by mapper partitions.
+   */
+  def getServerStatuses(shuffleId: Int, reduceId: Int): Array[ShuffleBlockStatus] = {
+    return getServerStatuses(shuffleId).map(s => {
+      val customStats = s.customStats match {
+        case Some(stats) => Some(stats.getStats(reduceId))
+        case None => None
+      }
+      new ShuffleBlockStatus(shuffleId, reduceId, s.address,
+        MapOutputTracker.decompressSize(s.compressedSizes(reduceId)), customStats)
+    })
+  }
+
+  /**
+   * Called on possibly remote nodes to get the server URIs and output sizes for all partitions
+   * of a shuffle.
+   * @param shuffleId the shuffle id
+   * @return An array of MapStatuses, each recording the address of a mapper and statistics
+   *         for the blocks of its output.
+   */
+  private[spark] def getServerStatuses(shuffleId: Int): Array[MapStatus] = {
     val statuses = mapStatuses.get(shuffleId)
     if (statuses == null) {
       logInfo("Don't have map outputs for shuffle " + shuffleId + ", fetching them")
@@ -138,8 +163,7 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
               case e: InterruptedException =>
             }
           }
-          return mapStatuses.get(shuffleId).map(status =>
-            (status.address, MapOutputTracker.decompressSize(status.compressedSizes(reduceId))))
+          return mapStatuses.get(shuffleId)
         } else {
           fetching += shuffleId
         }
@@ -156,11 +180,9 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
         fetching -= shuffleId
         fetching.notifyAll()
       }
-      return fetchedStatuses.map(s =>
-        (s.address, MapOutputTracker.decompressSize(s.compressedSizes(reduceId))))
+      return fetchedStatuses
     } else {
-      return statuses.map(s =>
-        (s.address, MapOutputTracker.decompressSize(s.compressedSizes(reduceId))))
+      return statuses
     }
   }
 

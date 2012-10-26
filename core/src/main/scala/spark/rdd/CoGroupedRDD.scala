@@ -45,7 +45,7 @@ class CoGroupedRDD[K](@transient rdds: Seq[RDD[(_, _)]], part: Partitioner)
         deps += new OneToOneDependency(mapSideCombinedRDD)
       } else {
         logInfo("Adding shuffle dependency with " + rdd)
-        deps += new ShuffleDependency[Any, ArrayBuffer[Any]](mapSideCombinedRDD, part)
+        deps += new ShuffleDependency[Any, ArrayBuffer[Any]](mapSideCombinedRDD, part, None)
       }
     }
     deps.toList

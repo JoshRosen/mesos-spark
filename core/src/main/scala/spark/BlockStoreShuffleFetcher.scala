@@ -16,8 +16,8 @@ private[spark] class BlockStoreShuffleFetcher extends ShuffleFetcher with Loggin
       shuffleId, reduceId, System.currentTimeMillis - startTime))
     
     val splitsByAddress = new HashMap[BlockManagerId, ArrayBuffer[(Int, Long)]]
-    for (((address, size), index) <- statuses.zipWithIndex) {
-      splitsByAddress.getOrElseUpdate(address, ArrayBuffer()) += ((index, size))
+    for ((status, index) <- statuses.zipWithIndex) {
+      splitsByAddress.getOrElseUpdate(status.address, ArrayBuffer()) += ((index, status.size))
     }
 
     val blocksByAddress: Seq[(BlockManagerId, Seq[(String, Long)])] = splitsByAddress.toSeq.map {
@@ -36,7 +36,7 @@ private[spark] class BlockStoreShuffleFetcher extends ShuffleFetcher with Loggin
           val regex = "shuffle_([0-9]*)_([0-9]*)_([0-9]*)".r
           blockId match {
             case regex(shufId, mapId, _) =>
-              val address = statuses(mapId.toInt)._1
+              val address = statuses(mapId.toInt).address
               throw new FetchFailedException(address, shufId.toInt, mapId.toInt, reduceId, null)
             case _ =>
               throw new SparkException(
