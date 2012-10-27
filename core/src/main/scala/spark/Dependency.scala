@@ -27,7 +27,7 @@ abstract class NarrowDependency[T](rdd: RDD[T]) extends Dependency(rdd) {
 class ShuffleDependency[K, V](
     @transient rdd: RDD[(K, V)],
     val partitioner: Partitioner,
-    val statsAccumulator: Option[PartitionStatsAccumulator[(K, V), _, _]])
+    val statsAccumulator: Option[PartitionStatsAccumulator[(K, V), _]])
   extends Dependency(rdd) {
 
   def this(rdd: RDD[(K, V)], partitioner: Partitioner) = this(rdd, partitioner, None)

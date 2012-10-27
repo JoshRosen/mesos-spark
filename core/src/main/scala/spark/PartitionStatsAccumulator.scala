@@ -8,26 +8,22 @@ package spark
  * @param initialValue initial value of the accumulator
  * @tparam T the type of object over which statistics are computed
  * @tparam R the type of the statistic
- * @tparam Repr used for self-referencing type
  */
-abstract class PartitionStatsAccumulator[T, R: ClassManifest,
-  Repr <: PartitionStatsAccumulator[T, R,Repr]](
+abstract class PartitionStatsAccumulator[-T, R: ClassManifest](
     @transient val initialValue: R,
     val numPartitions: Int)
   extends Serializable {
   val stats = Array.fill[R](numPartitions)(initialValue)
 
   def accumulate(partition: Int, value: T)
-  def addInPlace(acc: Repr)
+  def mergeStats(acc: R, stat: R) : R
   def getStats(partition: Int) : R = stats(partition)
 }
 
-class CountPartitionStatAccumulator[T](numPartitions: Int)
-  extends PartitionStatsAccumulator[T, Int, CountPartitionStatAccumulator[T]](0, numPartitions) {
-  def accumulate(partition: Int, value: T) {
+class CountPartitionStatAccumulator(numPartitions: Int)
+  extends PartitionStatsAccumulator[Any, Int](0, numPartitions) {
+  def accumulate(partition: Int, value: Any) {
     stats(partition) += 1
   }
-  def addInPlace(acc: CountPartitionStatAccumulator[T]) {
-    acc.stats.zipWithIndex.foreach(x => stats(x._2) += x._1)
-  }
+  def mergeStats(acc: Int, stat: Int) : Int = acc + stat
 }

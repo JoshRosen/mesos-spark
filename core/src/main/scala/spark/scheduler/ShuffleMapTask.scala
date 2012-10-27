@@ -132,7 +132,7 @@ private[spark] class ShuffleMapTask(
       val iter: Iterator[(Any, Any)] = statsAccumulator match {
         case Some(acc) =>
           bucketIterators(i).map(x => {
-            acc.asInstanceOf[PartitionStatsAccumulator[Any, Any, _]].accumulate(i, x)
+            acc.asInstanceOf[PartitionStatsAccumulator[Any, Any]].accumulate(i, x)
             x
           })
         case None =>
