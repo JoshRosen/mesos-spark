@@ -26,12 +26,13 @@ private[spark] class BlockStoreShuffleFetcher extends ShuffleFetcher with Loggin
     }
 
     // Generate the sequence of blocks to fetch for each block manager, represented as a list of
-    // (address, size) pairs
-    val blocksByAddress: Seq[(BlockManagerId, Seq[(String, Long)])] = splitsByAddress.toSeq.map {
-      case (address, splits) =>
-        (address, splits.map(s => ("shuffle_%d_%d_%d".format(shuffleId, s.mapId, s.reduceId),
-          s.size)))
-    }
+    // (address, size) pairs.  Filters out empty blocks so that they aren't fetched.
+    val blocksByAddress: Seq[(BlockManagerId, Seq[(String, Long)])] = for {
+      (address, splits) <- splitsByAddress.toSeq
+      nonEmptySplits = splits.filter(_.size != 0)
+      blocks = nonEmptySplits.map(s => ("shuffle_%d_%d_%d".format(shuffleId, s.mapId, s.reduceId),
+        s.size))
+    } yield (address, blocks)
 
     def unpackBlock(blockPair: (String, Option[Iterator[Any]])) : Iterator[(K, V)] = {
       val blockId = blockPair._1
