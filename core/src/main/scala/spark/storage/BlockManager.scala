@@ -46,7 +46,7 @@ private[spark] class BlockManagerId(var ip: String, var port: Int) extends Exter
 }
 
 
-private[spark] 
+private[spark]
 case class BlockException(blockId: String, message: String, ex: Exception = null)
 extends Exception(message)
 
@@ -204,14 +204,14 @@ class BlockManager(val master: BlockManagerMaster, val serializer: Serializer, m
 
     // As an optimization for map output fetches, if the block is for a shuffle, return it
     // without acquiring a lock; the disk store never deletes (recent) items so this should work
-    if (blockId.startsWith("shuffle_")) {
-      return diskStore.getValues(blockId) match {
-        case Some(iterator) =>
-          Some(iterator)
-        case None =>
-          throw new Exception("Block " + blockId + " not found on disk, though it should be")
-      }
-    }
+    // if (blockId.startsWith("shuffle_")) {
+    //   return diskStore.getValues(blockId) match {
+    //     case Some(iterator) =>
+    //       Some(iterator)
+    //     case None =>
+    //       throw new Exception("Block " + blockId + " not found on disk, though it should be")
+    //   }
+    // }
 
     locker.getLock(blockId).synchronized {
       val info = blockInfo.get(blockId)
@@ -289,14 +289,14 @@ class BlockManager(val master: BlockManagerMaster, val serializer: Serializer, m
 
     // As an optimization for map output fetches, if the block is for a shuffle, return it
     // without acquiring a lock; the disk store never deletes (recent) items so this should work
-    if (blockId.startsWith("shuffle_")) {
-      return diskStore.getBytes(blockId) match {
-        case Some(bytes) =>
-          Some(bytes)
-        case None =>
-          throw new Exception("Block " + blockId + " not found on disk, though it should be")
-      }
-    }
+    // if (blockId.startsWith("shuffle_")) {
+    //   return diskStore.getBytes(blockId) match {
+    //     case Some(bytes) =>
+    //       Some(bytes)
+    //     case None =>
+    //       throw new Exception("Block " + blockId + " not found on disk, though it should be")
+    //   }
+    // }
 
     locker.getLock(blockId).synchronized {
       val info = blockInfo.get(blockId)

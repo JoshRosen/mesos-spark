@@ -20,7 +20,7 @@ import java.util.zip.{GZIPInputStream, GZIPOutputStream}
 
 private[spark] sealed trait MapOutputTrackerMessage
 private[spark] case class GetMapOutputStatuses(shuffleId: Int, requester: String)
-  extends MapOutputTrackerMessage 
+  extends MapOutputTrackerMessage
 private[spark] case object StopMapOutputTracker extends MapOutputTrackerMessage
 
 private[spark] class MapOutputTrackerActor(tracker: MapOutputTracker) extends Actor with Logging {
@@ -88,14 +88,14 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
     }
     mapStatuses.put(shuffleId, new Array[MapStatus](numMaps))
   }
-  
+
   def registerMapOutput(shuffleId: Int, mapId: Int, status: MapStatus) {
     var array = mapStatuses.get(shuffleId)
     array.synchronized {
       array(mapId) = status
     }
   }
-  
+
   def registerMapOutputs(
       shuffleId: Int,
       statuses: Array[MapStatus],
@@ -119,7 +119,7 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
       throw new SparkException("unregisterMapOutput called for nonexistent shuffle ID")
     }
   }
-  
+
   // Remembers which map output locations are currently being fetched on a worker
   val fetching = new HashSet[Int]
 
@@ -149,7 +149,7 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
    * @return An array of MapStatuses, each recording the address of a mapper and statistics
    *         for the blocks of its output.
    */
-  private[spark] def getServerStatuses(shuffleId: Int): Array[MapStatus] = {
+  def getServerStatuses(shuffleId: Int): Array[MapStatus] = {
     val statuses = mapStatuses.get(shuffleId)
     if (statuses == null) {
       logInfo("Don't have map outputs for shuffle " + shuffleId + ", fetching them")
@@ -173,7 +173,7 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
       val host = System.getProperty("spark.hostname", Utils.localHostName)
       val fetchedBytes = askTracker(GetMapOutputStatuses(shuffleId, host)).asInstanceOf[Array[Byte]]
       val fetchedStatuses = deserializeStatuses(fetchedBytes)
-      
+
       logInfo("Got the output locations")
       mapStatuses.put(shuffleId, fetchedStatuses)
       fetching.synchronized {
