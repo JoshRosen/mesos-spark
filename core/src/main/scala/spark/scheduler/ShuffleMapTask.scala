@@ -70,19 +70,19 @@ private[spark] object ShuffleMapTask {
 
 private[spark] class ShuffleMapTask(
     stageId: Int,
-    var rdd: RDD[_], 
+    var rdd: RDD[_],
     var dep: ShuffleDependency[_,_],
-    var partition: Int, 
+    var partition: Int,
     @transient var locs: Seq[String])
   extends Task[MapStatus](stageId)
   with Externalizable
   with Logging {
 
   def this() = this(0, null, null, 0, null)
-  
+
   var split = if (rdd == null) {
-    null 
-  } else { 
+    null
+  } else {
     rdd.splits(partition)
   }
 
@@ -138,7 +138,7 @@ private[spark] class ShuffleMapTask(
         case None =>
           bucketIterators(i)
       }
-      val size = blockManager.put(blockId, iter, StorageLevel.DISK_ONLY, false)
+      val size = blockManager.put(blockId, iter, StorageLevel.MEMORY_ONLY_SER, false)
       compressedSizes(i) = MapOutputTracker.compressSize(size)
     }
 
