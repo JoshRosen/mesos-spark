@@ -10,41 +10,35 @@ import scala.collection.mutable
  */
 object SparkTC {
 
-  val numEdges = 200
-  val numVertices = 100
   val rand = new Random(42)
 
-  def generateGraph = {
+  def generateGraph(numVertices: Int, numEdges: Int) = {
     val edges: mutable.Set[(Int, Int)] = mutable.Set.empty
     while (edges.size < numEdges) {
       val from = rand.nextInt(numVertices)
       val to = rand.nextInt(numVertices)
       if (from != to) edges.+=((from, to))
     }
-    edges.toSeq
+    edges.iterator
   }
 
-  def main(args: Array[String]) {
-    if (args.length == 0) {
-      System.err.println("Usage: SparkTC <master> [<slices>]")
-      System.exit(1)
-    }
-    val spark = new SparkContext(args(0), "SparkTC")
-    val slices = if (args.length > 1) args(1).toInt else 2
-    var tc = spark.parallelize(generateGraph, slices).cache()
-
+  def linearTC(dataset: RDD[(Int, Int)]) {
     // Linear transitive closure: each round grows paths by one edge,
     // by joining the graph's edges with the already-discovered paths.
     // e.g. join the path (y, z) from the TC with the edge (x, y) from
     // the graph to obtain the path (x, z).
+    var tc = dataset
 
     // Because join() joins on keys, the edges are stored in reversed order.
     val edges = tc.map(x => (x._2, x._1))
 
     // This join is iterated until a fixed point is reached.
+    var numIterations = 0
     var oldCount = 0L
     var nextCount = tc.count()
     do {
+      println("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
+      numIterations += 1
       oldCount = nextCount
       // Perform the join, obtaining an RDD of (y, (z, x)) pairs,
       // then project the result to obtain the new (x, z) paths.
@@ -52,7 +46,51 @@ object SparkTC {
       nextCount = tc.count()
     } while (nextCount != oldCount)
 
-    println("TC has " + tc.count() + " edges.")
-    System.exit(0)
+    println("TC has " + tc.count() + " edges, done in " + numIterations + " linear TC iterations.")
+  }
+
+  def recursiveDoublingTC(dataset: RDD[(Int, Int)]) {
+
+    var tc = dataset
+
+    var numIterations = 0
+    var oldCount = 0L
+    var nextCount = tc.count()
+    do {
+      println("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
+      numIterations += 1
+      oldCount = nextCount
+
+      val reversedTc = tc.map(x => (x._2, x._1))
+      tc = tc.union(tc.join(reversedTc).map(x => (x._2._2, x._2._1))).distinct().cache()
+      nextCount = tc.count()
+
+    } while (nextCount != oldCount)
+
+    println("TC has " + tc.count() + " edges, done in " + numIterations +
+      " recursive doubling TC iterations.")
+  }
+
+  def main(args: Array[String]) {
+    if (args.length == 0) {
+      System.err.println("Usage: SparkTC <master> <slices> <numVertices> <numEdges> <method>")
+      System.exit(1)
+    }
+    val spark = new SparkContext(args(0), "SparkTC")
+    val slices = args(1).toInt
+    val numVertices = args(2).toInt
+    val numEdges = args(3).toInt / slices
+    val method = args(4).toInt
+
+    // Generate the dataset.
+    var dataset = spark.parallelize(0 until slices, slices).mapPartitions { part =>
+      generateGraph(numVertices, numEdges)
+    }.cache
+
+    if (method == 0) {
+      linearTC(dataset)
+    } else {
+      recursiveDoublingTC(dataset)
+    }
   }
 }
