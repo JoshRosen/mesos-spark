@@ -4,6 +4,7 @@ import spark._
 import SparkContext._
 import scala.util.Random
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * Transitive closure on a graph.
@@ -22,7 +23,8 @@ object SparkTC {
     edges.iterator
   }
 
-  def linearTC(dataset: RDD[(Int, Int)]) {
+  def linearTC(dataset: RDD[(Int, Int)]): ArrayBuffer[Long] = {
+    val times = new ArrayBuffer[Long](10)
     // Linear transitive closure: each round grows paths by one edge,
     // by joining the graph's edges with the already-discovered paths.
     // e.g. join the path (y, z) from the TC with the edge (x, y) from
@@ -37,6 +39,8 @@ object SparkTC {
     var oldCount = 0L
     var nextCount = tc.count()
     do {
+      val startTime = System.currentTimeMillis
+
       println("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
       numIterations += 1
       oldCount = nextCount
@@ -44,12 +48,19 @@ object SparkTC {
       // then project the result to obtain the new (x, z) paths.
       tc = tc.union(tc.join(edges).map(x => (x._2._2, x._2._1))).distinct().cache();
       nextCount = tc.count()
+
+      val endTime = System.currentTimeMillis
+      times += (endTime - startTime)
+
     } while (nextCount != oldCount)
 
     println("TC has " + tc.count() + " edges, done in " + numIterations + " linear TC iterations.")
+    times
   }
 
-  def recursiveDoublingTC(dataset: RDD[(Int, Int)]) {
+  def recursiveDoublingTC(dataset: RDD[(Int, Int)]): ArrayBuffer[Long] = {
+
+    val times = new ArrayBuffer[Long](10)
 
     var tc = dataset
 
@@ -57,6 +68,9 @@ object SparkTC {
     var oldCount = 0L
     var nextCount = tc.count()
     do {
+
+      val startTime = System.currentTimeMillis
+
       println("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
       numIterations += 1
       oldCount = nextCount
@@ -65,10 +79,15 @@ object SparkTC {
       tc = tc.union(tc.join(reversedTc).map(x => (x._2._2, x._2._1))).distinct().cache()
       nextCount = tc.count()
 
+      val endTime = System.currentTimeMillis
+      times += (endTime - startTime)
+
     } while (nextCount != oldCount)
 
     println("TC has " + tc.count() + " edges, done in " + numIterations +
       " recursive doubling TC iterations.")
+
+    times
   }
 
   def main(args: Array[String]) {
@@ -87,10 +106,12 @@ object SparkTC {
       generateGraph(numVertices, numEdges)
     }.cache
 
-    if (method == 0) {
-      linearTC(dataset)
-    } else {
-      recursiveDoublingTC(dataset)
-    }
+    val startTime = System.currentTimeMillis()
+
+    val times = if (method == 0) linearTC(dataset) else recursiveDoublingTC(dataset)
+    times.zipWithIndex.foreach { case(t, i) => println("#%d: %d".format(i, t / 1000)) }
+
+    val endTime = System.currentTimeMillis()
+    println("Elapsed time: " + (startTime - endTime))
   }
 }
