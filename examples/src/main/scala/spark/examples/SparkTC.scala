@@ -11,9 +11,8 @@ import scala.collection.mutable.ArrayBuffer
  */
 object SparkTC {
 
-  val rand = new Random(42)
-
-  def generateGraph(numVertices: Int, numEdges: Int) = {
+  def generateGraph(randSeed: Int, numVertices: Int, numEdges: Int) = {
+    val rand = new Random(42 + randSeed)
     val edges: mutable.Set[(Int, Int)] = mutable.Set.empty
     while (edges.size < numEdges) {
       val from = rand.nextInt(numVertices)
@@ -68,9 +67,7 @@ object SparkTC {
     var oldCount = 0L
     var nextCount = tc.count()
     do {
-
       val startTime = System.currentTimeMillis
-
       println("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
       numIterations += 1
       oldCount = nextCount
@@ -102,8 +99,8 @@ object SparkTC {
     val method = args(4).toInt
 
     // Generate the dataset.
-    var dataset = spark.parallelize(0 until slices, slices).mapPartitions { part =>
-      generateGraph(numVertices, numEdges)
+    var dataset = spark.parallelize(0 until slices, slices).flatMap { part =>
+      generateGraph(part, numVertices, numEdges)
     }.cache
 
     val startTime = System.currentTimeMillis()
@@ -112,6 +109,6 @@ object SparkTC {
     times.zipWithIndex.foreach { case(t, i) => println("#%d: %d".format(i, t / 1000)) }
 
     val endTime = System.currentTimeMillis()
-    println("Elapsed time: " + (startTime - endTime))
+    println("Elapsed time: %d s".format((endTime - startTime) / 1000))
   }
 }
