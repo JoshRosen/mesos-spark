@@ -216,9 +216,9 @@ object SparkTC extends Logging {
       }
     }
 
-    times.zipWithIndex.foreach { case(t, i) => println("#%d: %.4f".format(i, t.toDouble / 1000)) }
+    times.zipWithIndex.foreach { case(t, i) => logInfo("#%d: %.4f".format(i, t.toDouble / 1000)) }
 
     val endTime = System.currentTimeMillis()
-    println("Elapsed time: %.4f s".format((endTime - startTime).toDouble / 1000))
+    logInfo("Elapsed time: %.4f s".format((endTime - startTime).toDouble / 1000))
   }
 }
