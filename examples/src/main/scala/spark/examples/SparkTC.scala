@@ -12,7 +12,7 @@ import spark.rdd.CoalescedShuffleFetcherRDD
 /**
  * Transitive closure on a graph.
  */
-object SparkTC {
+object SparkTC extends Logging {
 
   def generateGraph(randSeed: Int, numVertices: Int, numEdges: Int) = {
     val rand = new Random(42 + randSeed)
@@ -43,7 +43,7 @@ object SparkTC {
     do {
       val startTime = System.currentTimeMillis
 
-      println("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
+      logInfo("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
       numIterations += 1
       oldCount = nextCount
       // Perform the join, obtaining an RDD of (y, (z, x)) pairs,
@@ -56,7 +56,7 @@ object SparkTC {
 
     } while (nextCount != oldCount)
 
-    println("TC has " + tc.count() + " edges, done in " + numIterations + " linear TC iterations.")
+    logInfo("TC has " + tc.count() + " edges, done in " + numIterations + " linear TC iterations.")
     times
   }
 
@@ -71,7 +71,7 @@ object SparkTC {
     var nextCount = tc.count()
     do {
       val startTime = System.currentTimeMillis
-      println("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
+      logInfo("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
       numIterations += 1
       oldCount = nextCount
 
@@ -84,9 +84,9 @@ object SparkTC {
 
     } while (nextCount != oldCount)
 
-    println("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
+    logInfo("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
 
-    println("TC has " + tc.count() + " edges, done in " + numIterations +
+    logInfo("TC has " + tc.count() + " edges, done in " + numIterations +
       " recursive doubling TC iterations.")
 
     times
@@ -108,6 +108,8 @@ object SparkTC {
 
     val numCoalescedPartitions = totalEdges / MAX_NUM_EDGES_PER_REDUCER
     val groups = Utils.groupArray(0 until NUM_FINE_GRAINED_BUCKETS, numCoalescedPartitions)
+
+    logInfo("cogroup: %d + %d edges, %d reducers".format(numEdges1, numEdges2, groups.size))
 
     new CoalescedCoGroupedRDD(
       Seq(r1.asInstanceOf[RDD[(Any, Any)]], r2.asInstanceOf[RDD[(Any, Any)]]),
@@ -135,6 +137,8 @@ object SparkTC {
     val numCoalescedPartitions = totalEdges / MAX_NUM_EDGES_PER_REDUCER
     val groups = Utils.groupArray(0 until NUM_FINE_GRAINED_BUCKETS, numCoalescedPartitions)
 
+    logInfo("distinct: %d edges, %d reducers".format(totalEdges, groups.size))
+
     val shuffledRdd = new CoalescedShuffleFetcherRDD(kvRdd, groups, preshuffleResult.dep)
     shuffledRdd.mapPartitions { part =>
       val hashset = new java.util.HashSet[T]
@@ -154,7 +158,7 @@ object SparkTC {
     var nextCount = tc.count()
     do {
       val startTime = System.currentTimeMillis
-      println("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
+      logInfo("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
       numIterations += 1
       oldCount = nextCount
 
@@ -171,9 +175,9 @@ object SparkTC {
 
     } while (nextCount != oldCount)
 
-    println("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
+    logInfo("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
 
-    println("TC has " + tc.count() + " edges, done in " + numIterations +
+    logInfo("TC has " + tc.count() + " edges, done in " + numIterations +
       " recursive doubling TC iterations.")
 
     times
