@@ -185,7 +185,7 @@ class SparkContext(
   }
   taskScheduler.start()
 
-  private var dagScheduler = new DAGScheduler(taskScheduler)
+  var dagScheduler = new DAGScheduler(taskScheduler)
 
   // Methods for creating RDDs
 

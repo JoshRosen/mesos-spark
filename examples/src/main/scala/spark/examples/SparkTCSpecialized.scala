@@ -17,6 +17,8 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet
  */
 object SparkTCSpecialized extends Logging {
 
+  val someLock = new Object
+
   var sc: SparkContext = null
 
   def removeShuffleData(numTasks: Int) {
@@ -41,6 +43,19 @@ object SparkTCSpecialized extends Logging {
         }
 
         shuffleBlocks.clear()
+      }
+    }
+  }
+
+  def removeCachedRdd(rdd: RDD[_], numTasks: Int) {
+    val numSplits = sc.dagScheduler.getCacheLocs(rdd).size
+    val rddId = rdd.id
+
+    sc.parallelize(0 until numTasks, numTasks).foreach { task =>
+      someLock.synchronized {
+        (0 until numSplits).foreach { splitIndex =>
+          SparkEnv.get.blockManager.drop("rdd_%d_%d".format(rddId, splitIndex))
+        }
       }
     }
   }
@@ -94,11 +109,14 @@ object SparkTCSpecialized extends Logging {
     var numIterations = 0
     var oldCount = 0L
     var nextCount = tc.count()
+    var oldTc: RDD[Array[Long]] = null
+
     do {
       val startTime = System.currentTimeMillis
       logInfo("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
       numIterations += 1
       oldCount = nextCount
+      oldTc = tc
 
       // Join to double edge size.
       val tcKv: RDD[(Int, Int)] = unpackArray(tc).map(x => (src(x), dst(x)))
@@ -114,6 +132,7 @@ object SparkTCSpecialized extends Logging {
 
       val startTimeRs = System.currentTimeMillis
       removeShuffleData(SLICES)
+      removeCachedRdd(oldTc, SLICES)
       logInfo("Removing shuffle data took %d ms".format(System.currentTimeMillis - startTimeRs))
 
       val endTime = System.currentTimeMillis
@@ -134,11 +153,13 @@ object SparkTCSpecialized extends Logging {
     var numIterations = 0
     var oldCount = 0L
     var nextCount = tc.count()
+    var oldTc: RDD[Array[Long]] = null
     do {
       val startTime = System.currentTimeMillis
       logInfo("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
       numIterations += 1
       oldCount = nextCount
+      oldTc = tc
 
       val tcKv: RDD[(Int, Int)] = unpackArray(tc).map(x => (src(x), dst(x)))
       val reversedTc: RDD[(Int, Int)] = unpackArray(tc).map(x => (dst(x), src(x)))
@@ -151,6 +172,7 @@ object SparkTCSpecialized extends Logging {
       nextCount = tc.mapPartitions(part => Iterator(part.next.size)).reduce(_+_)
       val startTimeRs = System.currentTimeMillis
       removeShuffleData(SLICES)
+      removeCachedRdd(oldTc, SLICES)
       logInfo("Removing shuffle data took %d ms".format(System.currentTimeMillis - startTimeRs))
 
       val endTime = System.currentTimeMillis
