@@ -5,6 +5,9 @@ import SparkContext._
 import scala.util.Random
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.JavaConversions._
+import spark.rdd.CoalescedCoGroupedRDD
+import spark.rdd.CoalescedShuffleFetcherRDD
 
 /**
  * Transitive closure on a graph.
@@ -81,6 +84,95 @@ object SparkTC {
 
     } while (nextCount != oldCount)
 
+    println("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
+
+    println("TC has " + tc.count() + " edges, done in " + numIterations +
+      " recursive doubling TC iterations.")
+
+    times
+  }
+
+  val NUM_FINE_GRAINED_BUCKETS = 1024
+  var MAX_NUM_EDGES_PER_REDUCER = 1000 * 1000
+
+  def cogroup[K: ClassManifest, V: ClassManifest, W: ClassManifest](
+    r1: RDD[(K, V)], r2: RDD[(K, W)]): RDD[(K, Array[ArrayBuffer[Any]])] = {
+
+    val part = new HashPartitioner(NUM_FINE_GRAINED_BUCKETS)
+    val preshuffleResult1 = r1.preshuffle(part, CountPartitionStatAccumulator)
+    val preshuffleResult2 = r2.preshuffle(part, CountPartitionStatAccumulator)
+
+    val numEdges1 = preshuffleResult1.customStats.sum
+    val numEdges2 = preshuffleResult2.customStats.sum
+    val totalEdges = numEdges1 + numEdges2
+
+    val numCoalescedPartitions = totalEdges / MAX_NUM_EDGES_PER_REDUCER
+    val groups = Utils.groupArray(0 until NUM_FINE_GRAINED_BUCKETS, numCoalescedPartitions)
+
+    new CoalescedCoGroupedRDD(
+      Seq(r1.asInstanceOf[RDD[(Any, Any)]], r2.asInstanceOf[RDD[(Any, Any)]]),
+      groups,
+      List(preshuffleResult1.dep, preshuffleResult2.dep))
+  }
+
+  def join[K: ClassManifest, V: ClassManifest, W: ClassManifest](
+    r1: RDD[(K, V)], r2: RDD[(K, W)]): RDD[(K, (V, W))] = {
+
+    val valueManifest = ClassManifest.fromClass(classOf[ArrayBuffer[Any]]).arrayManifest
+
+    (new PairRDDFunctions(cogroup(r1, r2))(classManifest[K], valueManifest)).flatMapValues {
+      g: Array[ArrayBuffer[Any]] =>
+        for (v <- g(0).iterator; w <- g(1).iterator) yield (v.asInstanceOf[V], w.asInstanceOf[W])
+    }
+  }
+
+  def distinct[T: ClassManifest](rdd: RDD[T]): RDD[T] = {
+    val part = new HashPartitioner(NUM_FINE_GRAINED_BUCKETS)
+    val kvRdd: RDD[(T, Null)] = rdd.map(x => (x, null))
+    val preshuffleResult = kvRdd.preshuffle(part, CountPartitionStatAccumulator)
+
+    val totalEdges = preshuffleResult.customStats.sum
+    val numCoalescedPartitions = totalEdges / MAX_NUM_EDGES_PER_REDUCER
+    val groups = Utils.groupArray(0 until NUM_FINE_GRAINED_BUCKETS, numCoalescedPartitions)
+
+    val shuffledRdd = new CoalescedShuffleFetcherRDD(kvRdd, groups, preshuffleResult.dep)
+    shuffledRdd.mapPartitions { part =>
+      val hashset = new java.util.HashSet[T]
+      part.foreach(x => hashset += x._1)
+      hashset.iterator
+    }
+  }
+
+  def recursiveDoublingTCPartialDag(dataset: RDD[(Int, Int)]): ArrayBuffer[Long] = {
+
+    val times = new ArrayBuffer[Long](10)
+
+    var tc = dataset
+
+    var numIterations = 0
+    var oldCount = 0L
+    var nextCount = tc.count()
+    do {
+      val startTime = System.currentTimeMillis
+      println("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
+      numIterations += 1
+      oldCount = nextCount
+
+      // Join to double edge size.
+      val reversedTc = tc.map(x => (x._2, x._1))
+      val doubledTc = join(tc, reversedTc).map(x => (x._2._2, x._2._1))
+
+      // Distinct to remove duplicated reachable vertex pairs.
+      tc = distinct(tc.union(doubledTc)).cache()
+
+      nextCount = tc.count()
+      val endTime = System.currentTimeMillis
+      times += (endTime - startTime)
+
+    } while (nextCount != oldCount)
+
+    println("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
+
     println("TC has " + tc.count() + " edges, done in " + numIterations +
       " recursive doubling TC iterations.")
 
@@ -105,10 +197,15 @@ object SparkTC {
 
     val startTime = System.currentTimeMillis()
 
-    val times = if (method == 0) linearTC(dataset) else recursiveDoublingTC(dataset)
-    times.zipWithIndex.foreach { case(t, i) => println("#%d: %d".format(i, t / 1000)) }
+    val times: ArrayBuffer[Long] = method match {
+      case 0 => linearTC(dataset)
+      case 1 => recursiveDoublingTC(dataset)
+      case 2 => recursiveDoublingTCPartialDag(dataset)
+    }
+
+    times.zipWithIndex.foreach { case(t, i) => println("#%d: %.4f".format(i, t.toDouble / 1000)) }
 
     val endTime = System.currentTimeMillis()
-    println("Elapsed time: %d s".format((endTime - startTime) / 1000))
+    println("Elapsed time: %.4f s".format((endTime - startTime).toDouble / 1000))
   }
 }

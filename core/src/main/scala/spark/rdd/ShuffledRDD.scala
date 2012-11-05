@@ -38,15 +38,3 @@ class ShuffledRDD[K, V](
     SparkEnv.get.shuffleFetcher.fetch[K, V](dep.shuffleId, split.index)
   }
 }
-
-
-class ShuffleDependencyForcerRDD[K: ClassManifest, V: ClassManifest](
-    prev: RDD[(K, V)], dep: ShuffleDependency[K, V])
-  extends RDD[(K, V)](prev.context) {
-
-  override def splits = Array(new ShuffledRDDSplit(1))
-  override val dependencies = List(dep)
-  override def compute(split: Split) = null
-  override def preferredLocations(split: Split) = Nil
-}
-

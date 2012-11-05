@@ -357,6 +357,10 @@ private object Utils extends Logging {
     execute(command, new File("."))
   }
 
+  def groupArray[T: ClassManifest](arr: Seq[T], numGroups: Int): Array[Array[T]] = {
+    val numElementsPerGroup = math.ceil(arr.length.toDouble / numGroups).toInt
+    arr.grouped(numElementsPerGroup).map(x => x.toArray).toArray
+  }
 
   /**
    * When called inside a class in the spark package, returns the name of the user code class
