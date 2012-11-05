@@ -802,6 +802,21 @@ class BlockManager(val master: BlockManagerMaster, val serializer: Serializer, m
     }
   }
 
+  /**
+   * Remove a block from the block manager.
+   */
+  def drop(blockId: String) {
+    locker.getLock(blockId).synchronized {
+      // TODO(rxin): Drop it from disk also.
+      val info = blockInfo.get(blockId)
+      memoryStore.remove(blockId)
+      blockInfo.remove(blockId)
+      if (info.tellMaster) {
+        reportBlockStatus(blockId)
+      }
+    }
+  }
+
   def shouldCompress(blockId: String): Boolean = {
     if (blockId.startsWith("shuffle_")) {
       compressShuffle

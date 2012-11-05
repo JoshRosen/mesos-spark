@@ -17,6 +17,34 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet
  */
 object SparkTCSpecialized extends Logging {
 
+  var sc: SparkContext = null
+
+  def removeShuffleData(numTasks: Int) {
+    sc.parallelize(0 until numTasks, numTasks).foreach { task =>
+      SparkEnv.get.shuffleBlocks.synchronized {
+        val shuffleBlocks = SparkEnv.get.shuffleBlocks
+        val blockManager = SparkEnv.get.blockManager
+
+        shuffleBlocks.foreach { case(shuffleId, info) =>
+          val numMapOutputs: Int = info._1
+          val mapIds: ArrayBuffer[Int] = info._2
+
+          var i = 0
+          while (i < mapIds.size) {
+            var j = 0
+            while (j < numMapOutputs) {
+              blockManager.drop("shuffle_" + shuffleId + "_" + mapIds(i) + "_" + j)
+              j += 1
+            }
+            i += 1
+          }
+        }
+
+        shuffleBlocks.clear()
+      }
+    }
+  }
+
   // Packs two ints into a long.
   def edge(src: Int, dst: Int): Long = {
     val srcPacked: Long = src.toLong << 32
@@ -83,6 +111,8 @@ object SparkTCSpecialized extends Logging {
         hashPartitionPde(unpackArray(tc).union(joined))).cache()
 
       nextCount = tc.mapPartitions(part => Iterator(part.next.size)).reduce(_+_)
+      removeShuffleData(SLICES)
+
       val endTime = System.currentTimeMillis
       times += (endTime - startTime)
 
@@ -116,6 +146,8 @@ object SparkTCSpecialized extends Logging {
         hashPartitionNoPde(unpackArray(tc).union(joined), DEFAULT_PARALLELISM)).cache()
 
       nextCount = tc.mapPartitions(part => Iterator(part.next.size)).reduce(_+_)
+      removeShuffleData(SLICES)
+
       val endTime = System.currentTimeMillis
       times += (endTime - startTime)
 
@@ -131,6 +163,7 @@ object SparkTCSpecialized extends Logging {
   var MAX_NUM_EDGES_PER_REDUCER_COGROUP = 1000 * 1000
   var MAX_NUM_EDGES_PER_REDUCER_DISTINCT = 1000 * 1000
   var DEFAULT_PARALLELISM = 200
+  var SLICES = 80
 
   def cogroup[K: ClassManifest, V: ClassManifest, W: ClassManifest](
     r1: RDD[(K, V)], r2: RDD[(K, W)]): RDD[(K, Array[ArrayBuffer[Any]])] = {
@@ -191,14 +224,16 @@ object SparkTCSpecialized extends Logging {
         "Usage: SparkTCSpecialized <master> <slices> <numVertices> <numEdges> <method>")
       System.exit(1)
     }
-    val spark = new SparkContext(args(0), "SparkTC")
+    sc = new SparkContext(args(0), "SparkTC")
     val slices = args(1).toInt
     val numVertices = args(2).toInt
     val numEdges = args(3).toInt / slices
     val method = args(4).toInt
 
+    SLICES = slices
+
     // Generate the dataset.
-    var dataset: RDD[Array[Long]] = spark.parallelize(0 until slices, slices).mapPartitions {
+    var dataset: RDD[Array[Long]] = sc.parallelize(0 until slices, slices).mapPartitions {
       part => Iterator(generateGraph(part.next, numVertices, numEdges))
     }.cache
 

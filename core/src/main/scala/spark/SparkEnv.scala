@@ -1,5 +1,7 @@
 package spark
 
+import scala.collection.mutable.ArrayBuffer
+
 import akka.actor.ActorSystem
 import akka.actor.ActorSystemImpl
 import akka.remote.RemoteActorRefProvider
@@ -30,6 +32,20 @@ class SparkEnv (
     val connectionManager: ConnectionManager,
     val httpFileServer: HttpFileServer
   ) {
+
+  // mapping from shuffle id to (num map output splits, map ids that run on this node)
+  val shuffleBlocks = new java.util.HashMap[Int, (Int, ArrayBuffer[Int])]
+
+  def updateShuffleBlocks(shuffleId: Int, numMapSplits: Int, mapId: Int) {
+    shuffleBlocks.synchronized {
+      var status = shuffleBlocks.get(shuffleId)
+      if (status == null) {
+        shuffleBlocks.put(shuffleId, (numMapSplits, ArrayBuffer[Int](mapId)))
+      } else {
+        status._2 += mapId
+      }
+    }
+  }
 
   /** No-parameter constructor for unit tests. */
   def this() = {
@@ -87,10 +103,10 @@ object SparkEnv extends Logging {
     }
 
     val serializer = instantiateClass[Serializer]("spark.serializer", "spark.JavaSerializer")
-    
+
     val blockManagerMaster = new BlockManagerMaster(actorSystem, isMaster, isLocal)
     val blockManager = new BlockManager(blockManagerMaster, serializer)
-    
+
     val connectionManager = blockManager.connectionManager
 
     val broadcastManager = new BroadcastManager(isMaster)
@@ -105,7 +121,7 @@ object SparkEnv extends Logging {
 
     val shuffleFetcher = instantiateClass[ShuffleFetcher](
       "spark.shuffle.fetcher", "spark.BlockStoreShuffleFetcher")
-    
+
     val httpFileServer = new HttpFileServer()
     httpFileServer.initialize()
     System.setProperty("spark.fileserver.uri", httpFileServer.serverUri)
