@@ -111,7 +111,10 @@ object SparkTCSpecialized extends Logging {
         hashPartitionPde(unpackArray(tc).union(joined))).cache()
 
       nextCount = tc.mapPartitions(part => Iterator(part.next.size)).reduce(_+_)
+
+      val startTimeRs = System.currentTimeMillis
       removeShuffleData(SLICES)
+      logInfo("Removing shuffle data took %d ms".format(System.currentTimeMillis - startTimeRs))
 
       val endTime = System.currentTimeMillis
       times += (endTime - startTime)
@@ -146,7 +149,9 @@ object SparkTCSpecialized extends Logging {
         hashPartitionNoPde(unpackArray(tc).union(joined), DEFAULT_PARALLELISM)).cache()
 
       nextCount = tc.mapPartitions(part => Iterator(part.next.size)).reduce(_+_)
+      val startTimeRs = System.currentTimeMillis
       removeShuffleData(SLICES)
+      logInfo("Removing shuffle data took %d ms".format(System.currentTimeMillis - startTimeRs))
 
       val endTime = System.currentTimeMillis
       times += (endTime - startTime)
