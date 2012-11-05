@@ -82,7 +82,7 @@ object SparkTCSpecialized extends Logging {
       tc = distinctOnEachPartitionAndReturnArray(
         hashPartitionPde(unpackArray(tc).union(joined))).cache()
 
-      nextCount = unpackArray(tc).count()
+      nextCount = tc.mapPartitions(part => Iterator(part.next.size)).reduce(_+_)
       val endTime = System.currentTimeMillis
       times += (endTime - startTime)
 
@@ -115,8 +115,7 @@ object SparkTCSpecialized extends Logging {
       tc = distinctOnEachPartitionAndReturnArray(
         hashPartitionNoPde(unpackArray(tc).union(joined), DEFAULT_PARALLELISM)).cache()
 
-      nextCount = unpackArray(tc).count()
-
+      nextCount = tc.mapPartitions(part => Iterator(part.next.size)).reduce(_+_)
       val endTime = System.currentTimeMillis
       times += (endTime - startTime)
 
