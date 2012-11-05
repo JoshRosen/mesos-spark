@@ -76,7 +76,8 @@ object SparkTC extends Logging {
       oldCount = nextCount
 
       val reversedTc = tc.map(x => (x._2, x._1))
-      tc = tc.union(tc.join(reversedTc).map(x => (x._2._2, x._2._1))).distinct().cache()
+      val doubledTc = tc.join(reversedTc, DEFAULT_PARALLELISM).map(x => (x._2._2, x._2._1))
+      tc = tc.union(doubledTc).distinct().cache()
       nextCount = tc.count()
 
       val endTime = System.currentTimeMillis
@@ -95,6 +96,7 @@ object SparkTC extends Logging {
   val NUM_FINE_GRAINED_BUCKETS = 1024
   var MAX_NUM_EDGES_PER_REDUCER_COGROUP = 1000 * 1000
   var MAX_NUM_EDGES_PER_REDUCER_DISTINCT = 1000 * 1000
+  var DEFAULT_PARALLELISM = 200
 
   def cogroup[K: ClassManifest, V: ClassManifest, W: ClassManifest](
     r1: RDD[(K, V)], r2: RDD[(K, W)]): RDD[(K, Array[ArrayBuffer[Any]])] = {
@@ -208,7 +210,10 @@ object SparkTC extends Logging {
 
     val times: ArrayBuffer[Long] = method match {
       case 0 => linearTC(dataset)
-      case 1 => recursiveDoublingTC(dataset)
+      case 1 => {
+        DEFAULT_PARALLELISM = args(5).toInt
+        recursiveDoublingTC(dataset)
+      }
       case 2 => {
         MAX_NUM_EDGES_PER_REDUCER_COGROUP = args(5).toInt
         MAX_NUM_EDGES_PER_REDUCER_DISTINCT = args(6).toInt
