@@ -77,7 +77,7 @@ object SparkTC extends Logging {
 
       val reversedTc = tc.map(x => (x._2, x._1))
       val doubledTc = tc.join(reversedTc, DEFAULT_PARALLELISM).map(x => (x._2._2, x._2._1))
-      tc = tc.union(doubledTc).distinct().cache()
+      tc = tc.union(doubledTc).distinct(DEFAULT_PARALLELISM).cache()
       nextCount = tc.count()
 
       val endTime = System.currentTimeMillis
