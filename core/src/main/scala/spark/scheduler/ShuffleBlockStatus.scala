@@ -18,4 +18,4 @@ case class ShuffleBlockStatus(
   val reduceId : Int,
   val address: BlockManagerId,
   val size: Long,
-  val customStats: Option[Any])
+  val customStats: Array[Byte])

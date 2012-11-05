@@ -112,7 +112,8 @@ private[spark] class ShuffleMapTask(
   override def run(attemptId: Long): MapStatus = {
     val numOutputSplits = dep.partitioner.numPartitions
     val partitioner = dep.partitioner
-    val statsAccumulator = dep.statsAccumulator
+    val statsAccumulator =
+      dep.statsAccumulator.asInstanceOf[Option[PartitionStatsAccumulator[Any, Any]]]
 
     // Partition the map output.
     val buckets = Array.fill(numOutputSplits)(new ArrayBuffer[(Any, Any)])
@@ -126,15 +127,21 @@ private[spark] class ShuffleMapTask(
     val compressedSizes = new Array[Byte](numOutputSplits)
 
     val blockManager = SparkEnv.get.blockManager
+
+    val statsBuffer: Object =
+      if (statsAccumulator.isDefined)
+        statsAccumulator.get.allocateBuffer(numOutputSplits)
+      else null
+
     for (i <- 0 until numOutputSplits) {
       val blockId = "shuffle_" + dep.shuffleId + "_" + partition + "_" + i
       // Get a Scala iterator from Java map
       val iter: Iterator[(Any, Any)] = statsAccumulator match {
         case Some(acc) =>
-          bucketIterators(i).map(x => {
-            acc.asInstanceOf[PartitionStatsAccumulator[Any, Any]].accumulate(i, x)
+          bucketIterators(i).map { x =>
+            acc.accumulateFromUntypedArray(statsBuffer, i, x)
             x
-          })
+          }
         case None =>
           bucketIterators(i)
       }
@@ -142,7 +149,12 @@ private[spark] class ShuffleMapTask(
       compressedSizes(i) = MapOutputTracker.compressSize(size)
     }
 
-    return new MapStatus(blockManager.blockManagerId, compressedSizes, statsAccumulator)
+    val statsSerialized = statsAccumulator match {
+      case Some(acc) => acc.serializeUntyped(statsBuffer)
+      case None => new Array[Byte](0)
+    }
+
+    return new MapStatus(blockManager.blockManagerId, compressedSizes, statsSerialized)
   }
 
   override def preferredLocations: Seq[String] = locs

@@ -17,12 +17,23 @@ import org.apache.hadoop.mapred.JobConf
 import org.apache.hadoop.mapred.OutputFormat
 
 import org.apache.hadoop.mapreduce.lib.output.{FileOutputFormat => NewFileOutputFormat}
-import org.apache.hadoop.mapreduce.{OutputFormat => NewOutputFormat, RecordWriter => NewRecordWriter, Job => NewAPIHadoopJob, HadoopMapReduceUtil, TaskAttemptID, TaskAttemptContext}
+import org.apache.hadoop.mapreduce.{
+  OutputFormat => NewOutputFormat, RecordWriter => NewRecordWriter, Job => NewAPIHadoopJob,
+  HadoopMapReduceUtil, TaskAttemptID, TaskAttemptContext}
 
 import spark.partial.BoundedDouble
 import spark.partial.PartialResult
 import spark.rdd._
 import spark.SparkContext._
+import spark.scheduler.MapStatus
+
+
+case class PreshuffleResult[K, V, R](
+  val dep: ShuffleDependency[K, V],
+  val numMappers: Int,
+  val sizes: Array[Long],
+  val customStats: Array[R])
+
 
 /**
  * Extra functions available on RDDs of (key, value) pairs through an implicit conversion.
@@ -34,12 +45,48 @@ class PairRDDFunctions[K: ClassManifest, V: ClassManifest](
   with HadoopMapReduceUtil
   with Serializable {
 
+  def preshuffle[R: ClassManifest](
+    part: Partitioner, statsAcc: PartitionStatsAccumulator[(K, V), R])
+  : PreshuffleResult[K, V, R] = {
+
+    val dep = new ShuffleDependency[K, V](self, part, Some(statsAcc))
+    val depForcer = new ShuffleDependencyForcerRDD(self, dep)
+    val numMappers = self.context.runJob(depForcer, (iter: Iterator[_]) => {}).size
+
+    // Collect the partition statuses
+    val startTimeNetworkFetch = System.currentTimeMillis
+    val mapOutputTracker = SparkEnv.get.mapOutputTracker
+    val mapStatuses: Array[MapStatus] = mapOutputTracker.getServerStatuses(dep.shuffleId)
+    logInfo("Network fetch of map statuses took " +
+      (System.currentTimeMillis - startTimeNetworkFetch) + " ms")
+
+    val startTimeMerge = System.currentTimeMillis
+    val accumulatedSizes = new Array[Long](part.numPartitions)
+    val accumulatedStats = statsAcc.allocateBuffer(part.numPartitions)
+
+    mapStatuses foreach { mapStatus =>
+      val sizes: Array[Long] = mapStatus.compressedSizes.map(MapOutputTracker.decompressSize)
+      val stats: Array[R] = statsAcc.deserialize(mapStatus.customStats)
+
+      var reduceId = 0
+      while (reduceId < part.numPartitions) {
+        accumulatedSizes(reduceId) += sizes(reduceId)
+        accumulatedStats(reduceId) = statsAcc.merge(accumulatedStats(reduceId), stats(reduceId))
+        reduceId += 1
+      }
+    }
+
+    logInfo("Merge of map statuses took " + (System.currentTimeMillis - startTimeMerge) + " ms")
+
+    PreshuffleResult(dep, numMappers, accumulatedSizes, accumulatedStats)
+  }
+
   /**
-   * Generic function to combine the elements for each key using a custom set of aggregation 
+   * Generic function to combine the elements for each key using a custom set of aggregation
    * functions. Turns an RDD[(K, V)] into a result of type RDD[(K, C)], for a "combined type" C
    * Note that V and C can be different -- for example, one might group an RDD of type
    * (Int, Int) into an RDD of type (Int, Seq[Int]). Users provide three functions:
-   * 
+   *
    * - `createCombiner`, which turns a V into a C (e.g., creates a one-element list)
    * - `mergeValue`, to merge a V into a C (e.g., adds it to the end of a list)
    * - `mergeCombiners`, to combine two C's into a single one.
@@ -118,7 +165,7 @@ class PairRDDFunctions[K: ClassManifest, V: ClassManifest](
   /** Count the number of elements for each key, and return the result to the master as a Map. */
   def countByKey(): Map[K, Long] = self.map(_._1).countByValue()
 
-  /** 
+  /**
    * (Experimental) Approximate version of countByKey that can return a partial result if it does
    * not finish within a timeout.
    */
@@ -224,7 +271,7 @@ class PairRDDFunctions[K: ClassManifest, V: ClassManifest](
     }
   }
 
-  /** 
+  /**
    * Simplified version of combineByKey that hash-partitions the resulting RDD using the default
    * parallelism level.
    */

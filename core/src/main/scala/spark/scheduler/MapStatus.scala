@@ -9,8 +9,11 @@ import spark.PartitionStatsAccumulator
  * task ran on as well as the sizes of outputs for each reducer, for passing on to the reduce tasks.
  * The map output sizes are compressed using MapOutputTracker.compressSize.
  */
-private[spark] class MapStatus(var address: BlockManagerId, var compressedSizes: Array[Byte],
-  var customStats : Option[PartitionStatsAccumulator[_, _]])
+private[spark] class MapStatus(
+  var address: BlockManagerId,
+  var compressedSizes: Array[Byte],
+  var customStats: Array[Byte])
+
   extends Externalizable {
 
   def this() = this(null, null, null)  // For deserialization only
@@ -19,13 +22,15 @@ private[spark] class MapStatus(var address: BlockManagerId, var compressedSizes:
     address.writeExternal(out)
     out.writeInt(compressedSizes.length)
     out.write(compressedSizes)
-    out.writeObject(customStats)
+    out.writeInt(customStats.size)
+    out.write(customStats)
   }
 
   def readExternal(in: ObjectInput) {
     address = new BlockManagerId(in)
     compressedSizes = new Array[Byte](in.readInt())
     in.readFully(compressedSizes)
-    customStats = in.readObject().asInstanceOf[Option[PartitionStatsAccumulator[_, _]]]
+    customStats = new Array[Byte](in.readInt())
+    in.readFully(customStats)
   }
 }

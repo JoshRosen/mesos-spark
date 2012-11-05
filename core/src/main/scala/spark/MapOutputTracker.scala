@@ -132,13 +132,9 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
    *         specified partition of the shuffle output, indexed by mapper partitions.
    */
   def getServerStatuses(shuffleId: Int, reduceId: Int): Array[ShuffleBlockStatus] = {
-    return getServerStatuses(shuffleId).zipWithIndex.map({case (s, mapId) => {
-      val customStats = s.customStats match {
-        case Some(stats) => Some(stats.getStats(reduceId))
-        case None => None
-      }
+    return getServerStatuses(shuffleId).zipWithIndex.map({case (s: MapStatus, mapId: Int) => {
       new ShuffleBlockStatus(shuffleId, mapId, reduceId, s.address,
-        MapOutputTracker.decompressSize(s.compressedSizes(reduceId)), customStats)
+        MapOutputTracker.decompressSize(s.compressedSizes(reduceId)), s.customStats)
     }})
   }
 
