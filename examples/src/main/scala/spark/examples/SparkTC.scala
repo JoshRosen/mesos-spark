@@ -93,7 +93,8 @@ object SparkTC extends Logging {
   }
 
   val NUM_FINE_GRAINED_BUCKETS = 1024
-  var MAX_NUM_EDGES_PER_REDUCER = 1000 * 1000
+  var MAX_NUM_EDGES_PER_REDUCER_COGROUP = 1000 * 1000
+  var MAX_NUM_EDGES_PER_REDUCER_DISTINCT = 1000 * 1000
 
   def cogroup[K: ClassManifest, V: ClassManifest, W: ClassManifest](
     r1: RDD[(K, V)], r2: RDD[(K, W)]): RDD[(K, Array[ArrayBuffer[Any]])] = {
@@ -106,7 +107,7 @@ object SparkTC extends Logging {
     val numEdges2 = preshuffleResult2.customStats.sum
     val totalEdges = numEdges1 + numEdges2
 
-    val numCoalescedPartitions = totalEdges / MAX_NUM_EDGES_PER_REDUCER
+    val numCoalescedPartitions = totalEdges / MAX_NUM_EDGES_PER_REDUCER_COGROUP
     val groups = Utils.groupArray(0 until NUM_FINE_GRAINED_BUCKETS, numCoalescedPartitions)
 
     logInfo("cogroup: %d + %d edges, %d reducers".format(numEdges1, numEdges2, groups.size))
@@ -134,7 +135,7 @@ object SparkTC extends Logging {
     val preshuffleResult = kvRdd.preshuffle(part, CountPartitionStatAccumulator)
 
     val totalEdges = preshuffleResult.customStats.sum
-    val numCoalescedPartitions = totalEdges / MAX_NUM_EDGES_PER_REDUCER
+    val numCoalescedPartitions = totalEdges / MAX_NUM_EDGES_PER_REDUCER_DISTINCT
     val groups = Utils.groupArray(0 until NUM_FINE_GRAINED_BUCKETS, numCoalescedPartitions)
 
     logInfo("distinct: %d edges, %d reducers".format(totalEdges, groups.size))
@@ -164,7 +165,11 @@ object SparkTC extends Logging {
 
       // Join to double edge size.
       val reversedTc = tc.map(x => (x._2, x._1))
-      val doubledTc = join(tc, reversedTc).map(x => (x._2._2, x._2._1))
+      val doubledTc = join(tc, reversedTc).map(x => (x._2._2, x._2._1)).mapPartitions { part =>
+        val hashset = new java.util.HashSet[(Int, Int)]
+        part.foreach(x => hashset += x)
+        hashset.iterator
+      }
 
       // Distinct to remove duplicated reachable vertex pairs.
       tc = distinct(tc.union(doubledTc)).cache()
@@ -204,7 +209,11 @@ object SparkTC extends Logging {
     val times: ArrayBuffer[Long] = method match {
       case 0 => linearTC(dataset)
       case 1 => recursiveDoublingTC(dataset)
-      case 2 => recursiveDoublingTCPartialDag(dataset)
+      case 2 => {
+        MAX_NUM_EDGES_PER_REDUCER_COGROUP = args(5).toInt
+        MAX_NUM_EDGES_PER_REDUCER_DISTINCT = args(6).toInt
+        recursiveDoublingTCPartialDag(dataset)
+      }
     }
 
     times.zipWithIndex.foreach { case(t, i) => println("#%d: %.4f".format(i, t.toDouble / 1000)) }
