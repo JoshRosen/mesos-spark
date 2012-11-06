@@ -137,9 +137,7 @@ object SparkTCSpecialized extends Logging {
 
       val endTime = System.currentTimeMillis
       times += (endTime - startTime)
-
       logInfo("iteration time: %d s".format((endTime - startTime)/1000))
-
     } while (nextCount != oldCount)
 
     logInfo("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
@@ -179,6 +177,7 @@ object SparkTCSpecialized extends Logging {
 
       val endTime = System.currentTimeMillis
       times += (endTime - startTime)
+      logInfo("iteration time: %d s".format((endTime - startTime)/1000))
 
     } while (nextCount != oldCount)
 
