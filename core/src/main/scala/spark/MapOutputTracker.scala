@@ -229,12 +229,6 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
           return bytes
         case None =>
           statuses = mapStatuses.get(shuffleId)
-          // Callers of getSerializedLocations() only need to know blocks' locations and sizes,
-          // not their custom statistics, so we will clear the custom statistics field.
-          // This is a bit of a hack, since it overwrites the custom statistics rather than
-          // modifying a copy of the MapStatus object; this is okay as long as getServerStatuses()
-          // is not called after getSerializedLocations().
-          statuses.foreach(_.customStats = Array.empty)
           generationGotten = generation
       }
     }
@@ -255,9 +249,12 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
   // it to reduce tasks. We do this by compressing the serialized bytes using GZIP. They will
   // generally be pretty compressible because many map outputs will be on the same hostname.
   def serializeStatuses(statuses: Array[MapStatus]): Array[Byte] = {
+    // Reducers only need to know blocks' locations and sizes, not their custom statistics,
+    // so we will clear the custom statistics field.
+    val smallStatuses = statuses.map (x => new MapStatus(x.address, x.compressedSizes, Array.empty))
     val out = new ByteArrayOutputStream
     val objOut = new ObjectOutputStream(new GZIPOutputStream(out))
-    objOut.writeObject(statuses)
+    objOut.writeObject(smallStatuses)
     objOut.close()
     out.toByteArray
   }
