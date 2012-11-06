@@ -138,6 +138,8 @@ object SparkTCSpecialized extends Logging {
       val endTime = System.currentTimeMillis
       times += (endTime - startTime)
 
+      logInfo("iteration time: %d s".format((endTime - startTime)/1000))
+
     } while (nextCount != oldCount)
 
     logInfo("iteration %d: %d -> %d".format(numIterations, oldCount, nextCount))
@@ -186,7 +188,7 @@ object SparkTCSpecialized extends Logging {
     times
   }
 
-  val NUM_FINE_GRAINED_BUCKETS = 1024
+  val NUM_FINE_GRAINED_BUCKETS = 2048
   var MAX_NUM_EDGES_PER_REDUCER_COGROUP = 1000 * 1000
   var MAX_NUM_EDGES_PER_REDUCER_DISTINCT = 1000 * 1000
   var DEFAULT_PARALLELISM = 200
