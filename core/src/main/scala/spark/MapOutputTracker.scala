@@ -229,6 +229,12 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
           return bytes
         case None =>
           statuses = mapStatuses.get(shuffleId)
+          // Callers of getSerializedLocations() only need to know blocks' locations and sizes,
+          // not their custom statistics, so we will clear the custom statistics field.
+          // This is a bit of a hack, since it overwrites the custom statistics rather than
+          // modifying a copy of the MapStatus object; this is okay as long as getServerStatuses()
+          // is not called after getSerializedLocations().
+          statuses.foreach(_.customStats = Array.empty)
           generationGotten = generation
       }
     }
