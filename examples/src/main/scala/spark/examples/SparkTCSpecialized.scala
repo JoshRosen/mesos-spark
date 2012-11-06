@@ -237,8 +237,8 @@ object SparkTCSpecialized extends Logging {
     val kvRdd: RDD[(T, Null)] = rdd.map(x => (x, null))
     val preshuffleResult = kvRdd.preshuffle(part, CountPartitionStatAccumulator)
 
-    val totalEdges = preshuffleResult.customStats.sum
-    val numCoalescedPartitions = totalEdges / MAX_NUM_EDGES_PER_REDUCER_DISTINCT
+    val totalEdges: Long = preshuffleResult.customStats.map(_.toLong).sum
+    val numCoalescedPartitions = (totalEdges / MAX_NUM_EDGES_PER_REDUCER_DISTINCT).toInt
 
     logInfo("total edges %d, numCoalescedPartitions %d".format(totalEdges, numCoalescedPartitions))
 
