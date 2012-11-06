@@ -359,6 +359,8 @@ private object Utils extends Logging {
 
   def groupArray[T: ClassManifest](arr: Seq[T], numGroups: Int): Array[Array[T]] = {
     val numElementsPerGroup = math.ceil(arr.length.toDouble / numGroups).toInt
+    logInfo("group array: %d groups, arr size %d, #/group %d".format(
+      numGroups, arr.length, numElementsPerGroup) + " " + arr)
     arr.grouped(numElementsPerGroup).map(x => x.toArray).toArray
   }
 
