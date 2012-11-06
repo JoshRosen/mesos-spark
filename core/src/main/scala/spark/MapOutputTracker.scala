@@ -78,7 +78,7 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
       return result
     } catch {
       case e: Exception =>
-        throw new SparkException("Error communicating with MapOutputTracker", e)
+        throw new SparkException("Error communicating with MapOutputTracker: " + message, e)
     }
   }
 

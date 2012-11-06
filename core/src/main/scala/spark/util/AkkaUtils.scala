@@ -25,6 +25,7 @@ private[spark] object AkkaUtils {
   def createActorSystem(name: String, host: String, port: Int): (ActorSystem, Int) = {
     val akkaThreads = System.getProperty("spark.akka.threads", "4").toInt
     val akkaBatchSize = System.getProperty("spark.akka.batchSize", "15").toInt
+    val akkaMessageFrameSize = System.getProperty("spark.akka.framesize", "10485760").toInt
     val akkaConf = ConfigFactory.parseString("""
       akka.daemonic = on
       akka.event-handlers = ["akka.event.slf4j.Slf4jEventHandler"]
@@ -35,7 +36,8 @@ private[spark] object AkkaUtils {
       akka.remote.netty.connection-timeout = 1s
       akka.remote.netty.execution-pool-size = %d
       akka.actor.default-dispatcher.throughput = %d
-      """.format(host, port, akkaThreads, akkaBatchSize))
+      akka.remote.netty.message-frame-size = %d
+      """.format(host, port, akkaThreads, akkaBatchSize, akkaMessageFrameSize))
 
     val actorSystem = ActorSystem("spark", akkaConf, getClass.getClassLoader)
 
