@@ -239,7 +239,13 @@ object SparkTCSpecialized extends Logging {
 
     val totalEdges = preshuffleResult.customStats.sum
     val numCoalescedPartitions = totalEdges / MAX_NUM_EDGES_PER_REDUCER_DISTINCT
-    val groups = Utils.groupArray(0 until NUM_FINE_GRAINED_BUCKETS, numCoalescedPartitions)
+
+    val groups: Array[Array[Int]] =
+      if (numCoalescedPartitions >= NUM_FINE_GRAINED_BUCKETS) {
+        Array.tabulate(NUM_FINE_GRAINED_BUCKETS)(i => Array(i))
+      } else {
+        Utils.groupArray(0 until NUM_FINE_GRAINED_BUCKETS, numCoalescedPartitions)
+      }
 
     logInfo("distinct: %d edges, %d reducers".format(totalEdges, groups.size))
 
