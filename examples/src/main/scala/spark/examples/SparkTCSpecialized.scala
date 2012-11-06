@@ -200,12 +200,17 @@ object SparkTCSpecialized extends Logging {
     val preshuffleResult1 = r1.preshuffle(part, CountPartitionStatAccumulator)
     val preshuffleResult2 = r2.preshuffle(part, CountPartitionStatAccumulator)
 
-    val numEdges1 = preshuffleResult1.customStats.sum
-    val numEdges2 = preshuffleResult2.customStats.sum
-    val totalEdges = numEdges1 + numEdges2
+    val numEdges1: Long = preshuffleResult1.customStats.map(_.toLong).sum
+    val numEdges2: Long = preshuffleResult2.customStats.map(_.toLong).sum
+    val totalEdges: Long = numEdges1 + numEdges2
 
-    val numCoalescedPartitions = totalEdges / MAX_NUM_EDGES_PER_REDUCER_COGROUP
-    val groups = Utils.groupArray(0 until NUM_FINE_GRAINED_BUCKETS, numCoalescedPartitions)
+    val numCoalescedPartitions = (totalEdges / MAX_NUM_EDGES_PER_REDUCER_COGROUP).toInt
+    val groups: Array[Array[Int]] =
+      if (numCoalescedPartitions >= NUM_FINE_GRAINED_BUCKETS) {
+        Array.tabulate(NUM_FINE_GRAINED_BUCKETS)(i => Array(i))
+      } else {
+        Utils.groupArray(0 until NUM_FINE_GRAINED_BUCKETS, numCoalescedPartitions)
+      }
 
     logInfo("cogroup: %d + %d edges, %d reducers".format(numEdges1, numEdges2, groups.size))
 
