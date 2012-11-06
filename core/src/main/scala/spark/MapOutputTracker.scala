@@ -27,7 +27,11 @@ private[spark] class MapOutputTrackerActor(tracker: MapOutputTracker) extends Ac
   def receive = {
     case GetMapOutputStatuses(shuffleId: Int, requester: String) =>
       logInfo("Asked to send map output locations for shuffle " + shuffleId + " to " + requester)
-      sender ! tracker.getSerializedLocations(shuffleId)
+      val startTime = System.currentTimeMillis
+      val result = sender ! tracker.getSerializedLocations(shuffleId)
+      logInfo("Servicing %d shuffleId from %s took %d ms".format(
+        shuffleId, requester, System.currentTimeMillis - startTime))
+      result
 
     case StopMapOutputTracker =>
       logInfo("MapOutputTrackerActor stopped!")
@@ -67,8 +71,11 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
   // throw a SparkException if this fails.
   def askTracker(message: Any): Any = {
     try {
+      val startTime = System.currentTimeMillis
       val future = trackerActor.ask(message)(timeout)
-      return Await.result(future, timeout)
+      val result = Await.result(future, timeout)
+      logInfo("ask tracker " + message + " took " + (System.currentTimeMillis - startTime) + " ms")
+      return result
     } catch {
       case e: Exception =>
         throw new SparkException("Error communicating with MapOutputTracker", e)
@@ -235,7 +242,8 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
     // If we got here, we failed to find the serialized locations in the cache, so we pulled
     // out a snapshot of the locations as "locs"; let's serialize and return that
     val bytes = serializeStatuses(statuses)
-    logInfo("Size of output statuses for shuffle %d is %d bytes".format(shuffleId, bytes.length))
+    logInfo("Size of output statuses for shuffle %d (%d mappers) is %d bytes".format(
+      shuffleId, statuses.size, bytes.length))
     // Add them into the table only if the generation hasn't changed while we were working
     generationLock.synchronized {
       if (generation == generationGotten) {
