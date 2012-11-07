@@ -14,13 +14,16 @@ object Cardinality {
 
     val rand = new Random
     val hashset = new LongOpenHashSet(numDistinct)
-    val hyperloglog = new HyperLogLog(4)
-    val adaptive = new AdaptiveCounting(1)
+    val hyperloglog = new HyperLogLog(9)
+    val adaptive = new AdaptiveCounting(8)
 
     while (hashset.size < numDistinct) {
       val next = rand.nextLong()
       hashset.add(next)
       hyperloglog.offer(next)
+      //adaptive.offer(next)
+
+      if (hashset.size % 1000000 == 0) println(hashset.size)
     }
 
     println("Num distinct: " + hashset.size)

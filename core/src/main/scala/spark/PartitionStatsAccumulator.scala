@@ -61,7 +61,7 @@ object CountPartitionStatAccumulator extends PartitionStatsAccumulator[Any, Int]
 
 object CardinalityGlobalStatAccumulator extends GlobalStatsAccumulator[Any, HyperLogLog] {
 
-  val LOG2M = 4
+  val LOG2M = 8
 
   override def initialValue: HyperLogLog = new HyperLogLog(LOG2M)
 
