@@ -27,10 +27,9 @@ abstract class NarrowDependency[T](rdd: RDD[T]) extends Dependency(rdd) {
 class ShuffleDependency[K, V](
     @transient rdd: RDD[(K, V)],
     val partitioner: Partitioner,
-    val statsAccumulator: Option[PartitionStatsAccumulator[(K, V), _]])
+    val bucketStatsAccumulator: Option[PartitionStatsAccumulator[(K, V), _]] = None,
+    val globalStatsAccumulator: Option[GlobalStatsAccumulator[(K, V), _]] = None)
   extends Dependency(rdd) {
-
-  def this(rdd: RDD[(K, V)], partitioner: Partitioner) = this(rdd, partitioner, None)
 
   val shuffleId: Int = rdd.context.newShuffleId()
 }
@@ -51,7 +50,7 @@ class OneToOneDependency[T](rdd: RDD[T]) extends NarrowDependency[T](rdd) {
  */
 class RangeDependency[T](rdd: RDD[T], inStart: Int, outStart: Int, length: Int)
   extends NarrowDependency[T](rdd) {
-  
+
   override def getParents(partitionId: Int) = {
     if (partitionId >= outStart && partitionId < outStart + length) {
       List(partitionId - outStart + inStart)

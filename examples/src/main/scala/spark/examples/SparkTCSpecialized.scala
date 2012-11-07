@@ -240,12 +240,16 @@ object SparkTCSpecialized extends Logging {
   def hashPartitionPde[T: ClassManifest](rdd: RDD[T]): RDD[T] = {
     val part = new HashPartitioner(NUM_FINE_GRAINED_BUCKETS)
     val kvRdd: RDD[(T, Null)] = rdd.map(x => (x, null))
-    val preshuffleResult = kvRdd.preshuffle(part, CountPartitionStatAccumulator)
+    val preshuffleResult = kvRdd.preshuffle(
+      part,
+      CountPartitionStatAccumulator, Some(CardinalityGlobalStatAccumulator))
 
+    val distinctEdges: Long = preshuffleResult.globalStats.get.cardinality
     val totalEdges: Long = preshuffleResult.customStats.map(_.toLong).sum
-    val numCoalescedPartitions = (totalEdges / MAX_NUM_EDGES_PER_REDUCER_DISTINCT).toInt
+    val numCoalescedPartitions = (distinctEdges / MAX_NUM_EDGES_PER_REDUCER_DISTINCT).toInt
 
-    logInfo("total edges %d, numCoalescedPartitions %d".format(totalEdges, numCoalescedPartitions))
+    logInfo("total edges %d, distinct %d, numCoalescedPartitions %d".format(
+      totalEdges, distinctEdges, numCoalescedPartitions))
 
     val groups: Array[Array[Int]] =
       if (numCoalescedPartitions >= NUM_FINE_GRAINED_BUCKETS) {
@@ -296,7 +300,7 @@ object SparkTCSpecialized extends Logging {
     times.zipWithIndex.foreach { case(t, i) => logInfo("#%d: %.4f".format(i, t.toDouble / 1000)) }
 
     val endTime = System.currentTimeMillis()
-    logInfo("Elapsed time: %.4f s".format((endTime - startTime).toDouble / 1000))
+    logInfo("Time: %.4f s".format((endTime - startTime).toDouble / 1000))
   }
 
   // def linearTC(dataset: RDD[(Int, Int)]): ArrayBuffer[Long] = {

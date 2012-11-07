@@ -10,10 +10,10 @@ import spark.PartitionStatsAccumulator
  * The map output sizes are compressed using MapOutputTracker.compressSize.
  */
 private[spark] class MapStatus(
-  var address: BlockManagerId,
-  var compressedSizes: Array[Byte],
-  var customStats: Array[Byte])
-
+    var address: BlockManagerId,
+    var compressedSizes: Array[Byte],
+    var bucketStats: Array[Byte],
+    var globalStats: Array[Byte] = Array.empty)
   extends Externalizable {
 
   def this() = this(null, null, null)  // For deserialization only
@@ -22,15 +22,19 @@ private[spark] class MapStatus(
     address.writeExternal(out)
     out.writeInt(compressedSizes.length)
     out.write(compressedSizes)
-    out.writeInt(customStats.size)
-    out.write(customStats)
+    out.writeInt(bucketStats.size)
+    out.write(bucketStats)
+    out.writeInt(globalStats.size)
+    out.write(globalStats)
   }
 
   def readExternal(in: ObjectInput) {
     address = new BlockManagerId(in)
     compressedSizes = new Array[Byte](in.readInt())
     in.readFully(compressedSizes)
-    customStats = new Array[Byte](in.readInt())
-    in.readFully(customStats)
+    bucketStats = new Array[Byte](in.readInt())
+    in.readFully(bucketStats)
+    globalStats = new Array[Byte](in.readInt())
+    in.readFully(globalStats)
   }
 }

@@ -133,7 +133,8 @@ object SparkBuild extends Build {
       "colt" % "colt" % "1.2.0",
       "cc.spray" % "spray-can" % "1.0-M2.1",
       "cc.spray" % "spray-server" % "1.0-M2.1",
-      "org.apache.mesos" % "mesos" % "0.9.0-incubating"
+      "org.apache.mesos" % "mesos" % "0.9.0-incubating",
+      "com.clearspring.analytics" % "stream" % "2.2.0"
     ) ++ (if (HADOOP_MAJOR_VERSION == "2") Some("org.apache.hadoop" % "hadoop-client" % HADOOP_VERSION) else None).toSeq,
     unmanagedSourceDirectories in Compile <+= baseDirectory{ _ / ("src/hadoop" + HADOOP_MAJOR_VERSION + "/scala") }
   ) ++ assemblySettings ++ extraAssemblySettings ++ Twirl.settings

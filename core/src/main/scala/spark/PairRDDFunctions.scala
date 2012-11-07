@@ -28,11 +28,15 @@ import spark.SparkContext._
 import spark.scheduler.MapStatus
 
 
-case class PreshuffleResult[K, V, R](
+case class PreshuffleResult[K, V, R1, R2](
   val dep: ShuffleDependency[K, V],
   val numMappers: Int,
   val sizes: Array[Long],
-  val customStats: Array[R])
+  val bucketStats: Array[R1],
+  val globalStats: Option[R2]) {
+
+  def customStats = bucketStats
+}
 
 
 /**
@@ -46,10 +50,16 @@ class PairRDDFunctions[K: ClassManifest, V: ClassManifest](
   with Serializable {
 
   def preshuffle[R: ClassManifest](
-    part: Partitioner, statsAcc: PartitionStatsAccumulator[(K, V), R])
-  : PreshuffleResult[K, V, R] = {
+    part: Partitioner, bucketStatsAcc: PartitionStatsAccumulator[(K, V), R])
+  : PreshuffleResult[K, V, R, _] = preshuffle(part, bucketStatsAcc, None)
 
-    val dep = new ShuffleDependency[K, V](self, part, Some(statsAcc))
+  def preshuffle[R1: ClassManifest, R2](
+    part: Partitioner,
+    bucketStatsAcc: PartitionStatsAccumulator[(K, V), R1],
+    globalStatsAcc: Option[GlobalStatsAccumulator[(K, V), R2]] = None)
+  : PreshuffleResult[K, V, R1, R2] = {
+
+    val dep = new ShuffleDependency[K, V](self, part, Some(bucketStatsAcc), globalStatsAcc)
     val depForcer = new ShuffleDependencyForcerRDD(self, dep)
     val numMappers = self.context.runJob(depForcer, (iter: Iterator[_]) => {}).size
 
@@ -61,24 +71,31 @@ class PairRDDFunctions[K: ClassManifest, V: ClassManifest](
       (System.currentTimeMillis - startTimeNetworkFetch) + " ms")
 
     val startTimeMerge = System.currentTimeMillis
-    val accumulatedSizes = new Array[Long](part.numPartitions)
-    val accumulatedStats = statsAcc.allocateBuffer(part.numPartitions)
+    val bucketSizes = new Array[Long](part.numPartitions)
+    val bucketStats = bucketStatsAcc.allocateBuffer(part.numPartitions)
 
     mapStatuses foreach { mapStatus =>
       val sizes: Array[Long] = mapStatus.compressedSizes.map(MapOutputTracker.decompressSize)
-      val stats: Array[R] = statsAcc.deserialize(mapStatus.customStats)
+      val stats: Array[R1] = bucketStatsAcc.deserialize(mapStatus.bucketStats)
 
       var reduceId = 0
       while (reduceId < part.numPartitions) {
-        accumulatedSizes(reduceId) += sizes(reduceId)
-        accumulatedStats(reduceId) = statsAcc.merge(accumulatedStats(reduceId), stats(reduceId))
+        bucketSizes(reduceId) += sizes(reduceId)
+        bucketStats(reduceId) = bucketStatsAcc.merge(bucketStats(reduceId), stats(reduceId))
         reduceId += 1
       }
     }
 
+    val globalStat: Option[R2] =
+      globalStatsAcc.map { acc =>
+        var stat = acc.initialValue
+        mapStatuses.foreach { s => stat = acc.merge(stat, acc.deserialize(s.globalStats)) }
+        stat
+      }
+
     logInfo("Merge of map statuses took " + (System.currentTimeMillis - startTimeMerge) + " ms")
 
-    PreshuffleResult(dep, numMappers, accumulatedSizes, accumulatedStats)
+    PreshuffleResult(dep, numMappers, bucketSizes, bucketStats, globalStat)
   }
 
   /**

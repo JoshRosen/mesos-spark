@@ -112,8 +112,10 @@ private[spark] class ShuffleMapTask(
   override def run(attemptId: Long): MapStatus = {
     val numOutputSplits = dep.partitioner.numPartitions
     val partitioner = dep.partitioner
-    val statsAccumulator =
-      dep.statsAccumulator.asInstanceOf[Option[PartitionStatsAccumulator[Any, Any]]]
+    val bucketStatsAcc =
+      dep.bucketStatsAccumulator.asInstanceOf[Option[PartitionStatsAccumulator[Any, Any]]]
+    val globalStatsAcc =
+      dep.globalStatsAccumulator.asInstanceOf[Option[GlobalStatsAccumulator[Any, Any]]]
 
     // Partition the map output.
     val buckets = Array.fill(numOutputSplits)(new ArrayBuffer[(Any, Any)])
@@ -128,22 +130,36 @@ private[spark] class ShuffleMapTask(
 
     val blockManager = SparkEnv.get.blockManager
 
+    var globalStat: Any = if (globalStatsAcc.isDefined) globalStatsAcc.get.initialValue else null
     val statsBuffer: Object =
-      if (statsAccumulator.isDefined)
-        statsAccumulator.get.allocateBuffer(numOutputSplits)
+      if (bucketStatsAcc.isDefined)
+        bucketStatsAcc.get.allocateBuffer(numOutputSplits)
       else null
 
     for (i <- 0 until numOutputSplits) {
       val blockId = "shuffle_" + dep.shuffleId + "_" + partition + "_" + i
       // Get a Scala iterator from Java map
-      val iter: Iterator[(Any, Any)] = statsAccumulator match {
-        case Some(acc) =>
+
+      val iter: Iterator[(Any, Any)] = {
+        if (bucketStatsAcc.isDefined && globalStatsAcc.isDefined) {
           bucketIterators(i).map { x =>
-            acc.accumulateFromUntypedArray(statsBuffer, i, x)
+            bucketStatsAcc.get.accumulateFromUntypedArray(statsBuffer, i, x)
+            globalStat = globalStatsAcc.get.accumulateUntyped(globalStat, x)
             x
           }
-        case None =>
+        } else if (bucketStatsAcc.isDefined && !globalStatsAcc.isDefined) {
+          bucketIterators(i).map { x =>
+            bucketStatsAcc.get.accumulateFromUntypedArray(statsBuffer, i, x)
+            x
+          }
+        } else if (!bucketStatsAcc.isDefined && globalStatsAcc.isDefined) {
+          bucketIterators(i).map { x =>
+            globalStat = globalStatsAcc.get.accumulateUntyped(globalStat, x)
+            x
+          }
+        } else {
           bucketIterators(i)
+        }
       }
       val size = blockManager.put(blockId, iter, StorageLevel.MEMORY_ONLY_SER, false)
       compressedSizes(i) = MapOutputTracker.compressSize(size)
@@ -151,12 +167,17 @@ private[spark] class ShuffleMapTask(
 
     SparkEnv.get.updateShuffleBlocks(dep.shuffleId, numOutputSplits, partition)
 
-    val statsSerialized = statsAccumulator match {
+    val statsSerialized = bucketStatsAcc match {
       case Some(acc) => acc.serializeUntyped(statsBuffer)
       case None => new Array[Byte](0)
     }
+    val globalStatSerialized: Array[Byte] = globalStatsAcc match {
+      case Some(acc) => acc.serializeUntyped(globalStat)
+      case None => new Array[Byte](0)
+    }
 
-    return new MapStatus(blockManager.blockManagerId, compressedSizes, statsSerialized)
+    return new MapStatus(
+      blockManager.blockManagerId, compressedSizes, statsSerialized, globalStatSerialized)
   }
 
   override def preferredLocations: Seq[String] = locs
