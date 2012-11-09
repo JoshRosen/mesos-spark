@@ -32,7 +32,7 @@ case class PreshuffleResult[K, V, R1, R2](
   val dep: ShuffleDependency[K, V],
   val numMappers: Int,
   val sizes: Array[Long],
-  val bucketStats: Array[R1],
+  val bucketStats: Option[Array[R1]],
   val globalStats: Option[R2]) {
 
   def customStats = bucketStats
@@ -49,17 +49,16 @@ class PairRDDFunctions[K: ClassManifest, V: ClassManifest](
   with HadoopMapReduceUtil
   with Serializable {
 
-  def preshuffle[R: ClassManifest](
-    part: Partitioner, bucketStatsAcc: PartitionStatsAccumulator[(K, V), R])
-  : PreshuffleResult[K, V, R, _] = preshuffle(part, bucketStatsAcc, None)
+  def preshuffle(part: Partitioner): PreshuffleResult[K, V, _, _] =
+    preshuffle(part, None, None)(classManifest[Any].asInstanceOf[ClassManifest[_]])
 
   def preshuffle[R1: ClassManifest, R2](
     part: Partitioner,
-    bucketStatsAcc: PartitionStatsAccumulator[(K, V), R1],
+    bucketStatsAcc: Option[PartitionStatsAccumulator[(K, V), R1]],
     globalStatsAcc: Option[GlobalStatsAccumulator[(K, V), R2]] = None)
   : PreshuffleResult[K, V, R1, R2] = {
 
-    val dep = new ShuffleDependency[K, V](self, part, Some(bucketStatsAcc), globalStatsAcc)
+    val dep = new ShuffleDependency[K, V](self, part, bucketStatsAcc, globalStatsAcc)
     val depForcer = new ShuffleDependencyForcerRDD(self, dep)
     val numMappers = self.context.runJob(depForcer, (iter: Iterator[_]) => {}).size
 
@@ -72,17 +71,33 @@ class PairRDDFunctions[K: ClassManifest, V: ClassManifest](
 
     val startTimeMerge = System.currentTimeMillis
     val bucketSizes = new Array[Long](part.numPartitions)
-    val bucketStats = bucketStatsAcc.allocateBuffer(part.numPartitions)
+    val bucketStats: Option[Array[R1]] = bucketStatsAcc.map { acc =>
+      acc.allocateBuffer(part.numPartitions)
+    }
 
-    mapStatuses foreach { mapStatus =>
-      val sizes: Array[Long] = mapStatus.compressedSizes.map(MapOutputTracker.decompressSize)
-      val stats: Array[R1] = bucketStatsAcc.deserialize(mapStatus.bucketStats)
+    if (bucketStatsAcc.isDefined) {
+      val acc = bucketStatsAcc.get
+      val bStats = bucketStats.get
+      mapStatuses foreach { mapStatus =>
+        val sizes: Array[Long] = mapStatus.compressedSizes.map(MapOutputTracker.decompressSize)
+        val stats: Array[R1] = acc.deserialize(mapStatus.bucketStats)
 
-      var reduceId = 0
-      while (reduceId < part.numPartitions) {
-        bucketSizes(reduceId) += sizes(reduceId)
-        bucketStats(reduceId) = bucketStatsAcc.merge(bucketStats(reduceId), stats(reduceId))
-        reduceId += 1
+        var reduceId = 0
+        while (reduceId < part.numPartitions) {
+          bucketSizes(reduceId) += sizes(reduceId)
+          bStats(reduceId) = acc.merge(bStats(reduceId), stats(reduceId))
+          reduceId += 1
+        }
+      }
+    } else {
+      mapStatuses foreach { mapStatus =>
+        val sizes: Array[Long] = mapStatus.compressedSizes.map(MapOutputTracker.decompressSize)
+
+        var reduceId = 0
+        while (reduceId < part.numPartitions) {
+          bucketSizes(reduceId) += sizes(reduceId)
+          reduceId += 1
+        }
       }
     }
 

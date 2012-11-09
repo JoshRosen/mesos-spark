@@ -197,11 +197,11 @@ object SparkTCSpecialized extends Logging {
     r1: RDD[(K, V)], r2: RDD[(K, W)]): RDD[(K, Array[ArrayBuffer[Any]])] = {
 
     val part = new HashPartitioner(NUM_FINE_GRAINED_BUCKETS)
-    val preshuffleResult1 = r1.preshuffle(part, CountPartitionStatAccumulator)
-    val preshuffleResult2 = r2.preshuffle(part, CountPartitionStatAccumulator)
+    val preshuffleResult1 = r1.preshuffle(part, Some(CountPartitionStatAccumulator))
+    val preshuffleResult2 = r2.preshuffle(part, Some(CountPartitionStatAccumulator))
 
-    val numEdges1: Long = preshuffleResult1.customStats.map(_.toLong).sum
-    val numEdges2: Long = preshuffleResult2.customStats.map(_.toLong).sum
+    val numEdges1: Long = preshuffleResult1.customStats.get.map(_.toLong).sum
+    val numEdges2: Long = preshuffleResult2.customStats.get.map(_.toLong).sum
     val totalEdges: Long = numEdges1 + numEdges2
 
     val numCoalescedPartitions = (totalEdges / MAX_NUM_EDGES_PER_REDUCER_COGROUP).toInt
@@ -242,10 +242,10 @@ object SparkTCSpecialized extends Logging {
     val kvRdd: RDD[(T, Null)] = rdd.map(x => (x, null))
     val preshuffleResult = kvRdd.preshuffle(
       part,
-      CountPartitionStatAccumulator, Some(CardinalityGlobalStatAccumulator))
+      Some(CountPartitionStatAccumulator), Some(CardinalityGlobalStatAccumulator))
 
     val distinctEdges: Long = preshuffleResult.globalStats.get.cardinality
-    val totalEdges: Long = preshuffleResult.customStats.map(_.toLong).sum
+    val totalEdges: Long = preshuffleResult.customStats.get.map(_.toLong).sum
     val numCoalescedPartitions = (distinctEdges / MAX_NUM_EDGES_PER_REDUCER_DISTINCT).toInt
 
     logInfo("total edges %d, distinct %d, numCoalescedPartitions %d".format(

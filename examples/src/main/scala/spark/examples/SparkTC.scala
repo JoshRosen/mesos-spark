@@ -102,11 +102,11 @@ object SparkTC extends Logging {
     r1: RDD[(K, V)], r2: RDD[(K, W)]): RDD[(K, Array[ArrayBuffer[Any]])] = {
 
     val part = new HashPartitioner(NUM_FINE_GRAINED_BUCKETS)
-    val preshuffleResult1 = r1.preshuffle(part, CountPartitionStatAccumulator)
-    val preshuffleResult2 = r2.preshuffle(part, CountPartitionStatAccumulator)
+    val preshuffleResult1 = r1.preshuffle(part, Some(CountPartitionStatAccumulator))
+    val preshuffleResult2 = r2.preshuffle(part, Some(CountPartitionStatAccumulator))
 
-    val numEdges1 = preshuffleResult1.customStats.sum
-    val numEdges2 = preshuffleResult2.customStats.sum
+    val numEdges1 = preshuffleResult1.customStats.get.sum
+    val numEdges2 = preshuffleResult2.customStats.get.sum
     val totalEdges = numEdges1 + numEdges2
 
     val numCoalescedPartitions = totalEdges / MAX_NUM_EDGES_PER_REDUCER_COGROUP
@@ -134,9 +134,9 @@ object SparkTC extends Logging {
   def distinct[T: ClassManifest](rdd: RDD[T]): RDD[T] = {
     val part = new HashPartitioner(NUM_FINE_GRAINED_BUCKETS)
     val kvRdd: RDD[(T, Null)] = rdd.map(x => (x, null))
-    val preshuffleResult = kvRdd.preshuffle(part, CountPartitionStatAccumulator)
+    val preshuffleResult = kvRdd.preshuffle(part, Some(CountPartitionStatAccumulator))
 
-    val totalEdges = preshuffleResult.customStats.sum
+    val totalEdges = preshuffleResult.customStats.get.sum
     val numCoalescedPartitions = totalEdges / MAX_NUM_EDGES_PER_REDUCER_DISTINCT
     val groups = Utils.groupArray(0 until NUM_FINE_GRAINED_BUCKETS, numCoalescedPartitions)
 
