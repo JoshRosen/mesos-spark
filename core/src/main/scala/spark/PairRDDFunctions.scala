@@ -256,6 +256,11 @@ class PairRDDFunctions[K: ClassManifest, V: ClassManifest](
     }
   }
 
+  def partitionByWithLocations(partitioner: Partitioner, mapSideCombine: Boolean = false,
+    locations: Array[Seq[String]]): RDD[(K, V)] = {
+    new ShuffledRDDWithLocations[K, V](self, partitioner, locations)
+  }
+
   /**
    * Merge the values for each key using an associative reduce function. This will also perform
    * the merging locally on each mapper before sending results to a reducer, similarly to a
