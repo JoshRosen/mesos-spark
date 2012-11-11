@@ -200,7 +200,7 @@ class BlockManager(val master: BlockManagerMaster, val serializer: Serializer, m
    * Get block from local block manager.
    */
   def getLocal(blockId: String): Option[Iterator[Any]] = {
-    logDebug("Getting local block " + blockId)
+    logInfo("Getting local block " + blockId)
 
     // As an optimization for map output fetches, if the block is for a shuffle, return it
     // without acquiring a lock; the disk store never deletes (recent) items so this should work
@@ -352,7 +352,7 @@ class BlockManager(val master: BlockManagerMaster, val serializer: Serializer, m
     if (blockId == null) {
       throw new IllegalArgumentException("Block Id is null")
     }
-    logDebug("Getting remote block " + blockId)
+    logInfo("Getting remote block " + blockId)
     // Get locations of block
     val locations = master.mustGetLocations(GetLocations(blockId))
 
