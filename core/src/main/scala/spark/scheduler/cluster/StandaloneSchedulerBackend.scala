@@ -56,9 +56,14 @@ class StandaloneSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Actor
 
       case StatusUpdate(slaveId, taskId, state, data) =>
         scheduler.statusUpdate(taskId, state, data.value)
-        if (TaskState.isFinished(state)) {
-          freeCores(slaveId) += 1
-          makeOffers(slaveId)
+        // FIXME
+        if (!freeCores.contains(slaveId)) {
+          logWarning("Ignoring status update from unknown slave " + slaveId)
+        } else {
+          if (TaskState.isFinished(state)) {
+           freeCores(slaveId) += 1
+            makeOffers(slaveId)
+          }
         }
 
       case ReviveOffers =>
