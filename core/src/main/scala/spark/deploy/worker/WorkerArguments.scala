@@ -9,15 +9,15 @@ import java.lang.management.ManagementFactory
  * Command-line parser for the master.
  */
 private[spark] class WorkerArguments(args: Array[String]) {
-  var ip = Utils.localIpAddress()
+  var ip = Utils.localHostName()
   var port = 0
   var webUiPort = 8081
   var cores = inferDefaultCores()
   var memory = inferDefaultMemory()
   var master: String = null
   var workDir: String = null
-  
-  // Check for settings in environment variables 
+
+  // Check for settings in environment variables
   if (System.getenv("SPARK_WORKER_PORT") != null) {
     port = System.getenv("SPARK_WORKER_PORT").toInt
   }
@@ -33,7 +33,7 @@ private[spark] class WorkerArguments(args: Array[String]) {
   if (System.getenv("SPARK_WORKER_DIR") != null) {
     workDir = System.getenv("SPARK_WORKER_DIR")
   }
-  
+
   parse(args.toList)
 
   def parse(args: List[String]): Unit = args match {
@@ -56,7 +56,7 @@ private[spark] class WorkerArguments(args: Array[String]) {
     case ("--work-dir" | "-d") :: value :: tail =>
       workDir = value
       parse(tail)
-      
+
     case "--webui-port" :: IntParam(value) :: tail =>
       webUiPort = value
       parse(tail)
