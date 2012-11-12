@@ -305,8 +305,8 @@ private[spark] class ConnectionManager(port: Int) extends Logging {
       connectionRequests += newConnection
       newConnection
     }
-    
-    logInfo("connections: " + connectionsById.toString)
+
+    //logInfo("connections: " + connectionsById.toString)
 
     val lookupKey = ConnectionManagerId.fromSocketAddress(connectionManagerId.toSocketAddress)
     val connection = connectionsById.getOrElse(lookupKey, startNewConnection())
