@@ -97,6 +97,14 @@ class StandaloneSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Actor
 
     // Launch tasks returned by a set of resource offers
     def launchTasks(tasks: Seq[Seq[TaskDescription]]) {
+      val taskLaunchOverhead = System.getProperty("spark.taskLaunchOverhead", "0").toLong
+      System.out.println("taskLaunchOverhead is " + taskLaunchOverhead + " milliseconds")
+      if (taskLaunchOverhead > 0) {
+        System.out.println("Sleeping for " + taskLaunchOverhead + " milliseconds before launching tasks")
+
+        logInfo("Sleeping for " + taskLaunchOverhead + " milliseconds before launching tasks")
+        Thread.sleep(taskLaunchOverhead)
+      }
       for (task <- tasks.flatten) {
         freeCores(task.slaveId) -= 1
         slaveActor(task.slaveId) ! LaunchTask(task)
