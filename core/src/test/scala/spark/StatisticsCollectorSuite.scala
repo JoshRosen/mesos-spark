@@ -23,7 +23,8 @@ class StatisticsCollectorSuite extends FunSuite with BeforeAndAfter {
   test("cardinality") {
     sc = new SparkContext("local", "test")
     val nums = sc.makeRDD(1 to 1000, 2).map(x => (x, x))
-    val preShuffled = nums.preshuffle(new HashPartitioner(2), CountPartitionStatAccumulator)
-    assert(preShuffled.customStats.sum === 1000)
+    val preShuffled =
+      nums.preshuffle(new HashPartitioner(2), Some(CountPartitionStatAccumulator), None)
+    assert(preShuffled.customStats.get.sum === 1000)
   }
 }

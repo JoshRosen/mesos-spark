@@ -17,7 +17,6 @@ class MapPartitionsWithSplitRDD[U: ClassManifest, T: ClassManifest](
   extends RDD[U](prev.context) {
 
   override val partitioner = if (preservesPartitioning) prev.partitioner else None
-
   override def splits = prev.splits
   override val dependencies = List(new OneToOneDependency(prev))
   override def compute(split: Split) = f(split.index, prev.iterator(split))

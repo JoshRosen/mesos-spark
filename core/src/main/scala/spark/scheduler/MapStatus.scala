@@ -12,7 +12,7 @@ import spark.PartitionStatsAccumulator
 private[spark] class MapStatus(
     var address: BlockManagerId,
     var compressedSizes: Array[Byte],
-    var bucketStats: Array[Byte],
+    var bucketStats: Array[Byte] = Array.empty,
     var globalStats: Array[Byte] = Array.empty)
   extends Externalizable {
 

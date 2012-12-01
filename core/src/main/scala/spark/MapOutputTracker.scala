@@ -2,6 +2,10 @@ package spark
 
 import java.io._
 import java.util.concurrent.ConcurrentHashMap
+import java.util.zip.{GZIPInputStream, GZIPOutputStream}
+
+import scala.collection.mutable.HashMap
+import scala.collection.mutable.HashSet
 
 import akka.actor._
 import akka.dispatch._
@@ -11,12 +15,9 @@ import akka.util.Duration
 import akka.util.Timeout
 import akka.util.duration._
 
-import scala.collection.mutable.HashMap
-import scala.collection.mutable.HashSet
-
-import scheduler.{ShuffleBlockStatus, MapStatus}
+import spark.scheduler.{ShuffleBlockStatus, MapStatus}
 import spark.storage.BlockManagerId
-import java.util.zip.{GZIPInputStream, GZIPOutputStream}
+
 
 private[spark] sealed trait MapOutputTrackerMessage
 private[spark] case class GetMapOutputStatuses(shuffleId: Int, requester: String)
@@ -117,7 +118,7 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
     var array = mapStatuses.get(shuffleId)
     if (array != null) {
       array.synchronized {
-        if (array(mapId).address == bmAddress) {
+        if (array(mapId) != null && array(mapId).address == bmAddress) {
           array(mapId) = null
         }
       }
@@ -139,7 +140,12 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
    *         specified partition of the shuffle output, indexed by mapper partitions.
    */
   def getServerStatuses(shuffleId: Int, reduceId: Int): Array[ShuffleBlockStatus] = {
-    return getServerStatuses(shuffleId).zipWithIndex.map({case (s: MapStatus, mapId: Int) => {
+    val fetchedStatuses = getServerStatuses(shuffleId)
+    if (fetchedStatuses.contains(null)) {
+      throw new FetchFailedException(null, shuffleId, -1, reduceId,
+        new Exception("Missing an output location for shuffle " + shuffleId))
+    }
+    return fetchedStatuses.zipWithIndex.map({case (s: MapStatus, mapId: Int) => {
       new ShuffleBlockStatus(shuffleId, mapId, reduceId, s.address,
         MapOutputTracker.decompressSize(s.compressedSizes(reduceId)), s.bucketStats)
     }})
@@ -285,7 +291,7 @@ private[spark] object MapOutputTracker {
   def compressSize(size: Long): Byte = {
     if (size == 0) {
       0
-    } else if (size == 1) {
+    } else if (size <= 1L) {
       1
     } else {
       math.min(255, math.ceil(math.log(size) / math.log(LOG_BASE)).toInt).toByte
