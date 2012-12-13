@@ -103,8 +103,10 @@ object SparkEnv extends Logging {
 
     val serializer = instantiateClass[Serializer]("spark.serializer", "spark.JavaSerializer")
 
-    val blockManagerMaster = new BlockManagerMaster(actorSystem, isMaster, isLocal)
-
+    val masterIp: String = System.getProperty("spark.master.host", "localhost")
+    val masterPort: Int = System.getProperty("spark.master.port", "7077").toInt
+    val blockManagerMaster = new BlockManagerMaster(
+      actorSystem, isMaster, isLocal, masterIp, masterPort)
     val blockManager = new BlockManager(actorSystem, blockManagerMaster, serializer)
 
     val connectionManager = blockManager.connectionManager

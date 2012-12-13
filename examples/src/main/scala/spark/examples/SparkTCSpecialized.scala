@@ -35,7 +35,7 @@ object SparkTCSpecialized extends Logging {
           while (i < mapIds.size) {
             var j = 0
             while (j < numMapOutputs) {
-              blockManager.drop("shuffle_" + shuffleId + "_" + mapIds(i) + "_" + j)
+              blockManager.removeBlock("shuffle_" + shuffleId + "_" + mapIds(i) + "_" + j)
               j += 1
             }
             i += 1
@@ -54,7 +54,7 @@ object SparkTCSpecialized extends Logging {
     sc.parallelize(0 until numTasks, numTasks).foreach { task =>
       someLock.synchronized {
         (0 until numSplits).foreach { splitIndex =>
-          SparkEnv.get.blockManager.drop("rdd_%d_%d".format(rddId, splitIndex))
+          SparkEnv.get.blockManager.removeBlock("rdd_%d_%d".format(rddId, splitIndex))
         }
       }
     }
