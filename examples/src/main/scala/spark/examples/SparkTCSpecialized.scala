@@ -17,46 +17,15 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet
  */
 object SparkTCSpecialized extends Logging {
 
-  val someLock = new Object
-
   var sc: SparkContext = null
-
-  def removeShuffleData(numTasks: Int) {
-    sc.parallelize(0 until numTasks, numTasks).foreach { task =>
-      SparkEnv.get.shuffleBlocks.synchronized {
-        val shuffleBlocks = SparkEnv.get.shuffleBlocks
-        val blockManager = SparkEnv.get.blockManager
-
-        shuffleBlocks.foreach { case(shuffleId, info) =>
-          val numMapOutputs: Int = info._1
-          val mapIds: ArrayBuffer[Int] = info._2
-
-          var i = 0
-          while (i < mapIds.size) {
-            var j = 0
-            while (j < numMapOutputs) {
-              blockManager.removeBlock("shuffle_" + shuffleId + "_" + mapIds(i) + "_" + j)
-              j += 1
-            }
-            i += 1
-          }
-        }
-
-        shuffleBlocks.clear()
-      }
-    }
-  }
 
   def removeCachedRdd(rdd: RDD[_], numTasks: Int) {
     val numSplits = sc.dagScheduler.getCacheLocs(rdd).size
     val rddId = rdd.id
+    val blockManagerMaster = SparkEnv.get.blockManager.master
 
-    sc.parallelize(0 until numTasks, numTasks).foreach { task =>
-      someLock.synchronized {
-        (0 until numSplits).foreach { splitIndex =>
-          SparkEnv.get.blockManager.removeBlock("rdd_%d_%d".format(rddId, splitIndex))
-        }
-      }
+    (0 until numSplits).foreach { splitIndex =>
+      blockManagerMaster.removeBlock("rdd_%d_%d".format(rddId, splitIndex))
     }
   }
 
@@ -131,7 +100,7 @@ object SparkTCSpecialized extends Logging {
       nextCount = tc.mapPartitions(part => Iterator(part.next.size)).reduce(_+_)
 
       val startTimeRs = System.currentTimeMillis
-      removeShuffleData(SLICES)
+      SparkEnv.get.blockManager.master.removeShuffleBlocks()
       removeCachedRdd(oldTc, SLICES)
       logInfo("Removing shuffle data took %d ms".format(System.currentTimeMillis - startTimeRs))
 
@@ -171,7 +140,7 @@ object SparkTCSpecialized extends Logging {
 
       nextCount = tc.mapPartitions(part => Iterator(part.next.size)).reduce(_+_)
       val startTimeRs = System.currentTimeMillis
-      removeShuffleData(SLICES)
+      SparkEnv.get.blockManager.master.removeShuffleBlocks()
       removeCachedRdd(oldTc, SLICES)
       logInfo("Removing shuffle data took %d ms".format(System.currentTimeMillis - startTimeRs))
 

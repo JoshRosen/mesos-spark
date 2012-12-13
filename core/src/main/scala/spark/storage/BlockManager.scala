@@ -16,7 +16,7 @@ import com.ning.compress.lzf.{LZFInputStream, LZFOutputStream}
 
 import it.unimi.dsi.fastutil.io.FastByteArrayOutputStream
 
-import spark.{CacheTracker, Logging, SizeEstimator, SparkEnv, SparkException, Utils}
+import spark.{CacheTracker, Logging, SizeEstimator, SparkException, Utils}
 import spark.network._
 import spark.serializer.Serializer
 import spark.util.{ByteBufferInputStream, GenerationIdUtil}
@@ -60,6 +60,9 @@ class BlockManager(
   }
 
   private val blockInfo = new ConcurrentHashMap[String, BlockInfo](1000)
+
+  // mapping from shuffle id to (num map output splits, map ids that run on this node)
+  val shuffleBlocks = new java.util.HashMap[Int, (Int, ArrayBuffer[Int])]
 
   private[storage] val memoryStore: BlockStore = new MemoryStore(this, maxMemory)
   private[storage] val diskStore: BlockStore =
@@ -871,6 +874,39 @@ class BlockManager(
     } else {
       // The block has already been removed; do nothing.
       logWarning("Block " + blockId + " does not exist.")
+    }
+  }
+
+  def removeShuffleBlocks() {
+    shuffleBlocks.synchronized {
+
+      shuffleBlocks.foreach { case(shuffleId, info) =>
+        val numMapOutputs: Int = info._1
+        val mapIds: ArrayBuffer[Int] = info._2
+
+        var i = 0
+        while (i < mapIds.size) {
+          var j = 0
+          while (j < numMapOutputs) {
+            removeBlock("shuffle_" + shuffleId + "_" + mapIds(i) + "_" + j)
+            j += 1
+          }
+          i += 1
+        }
+      }
+
+      shuffleBlocks.clear()
+    }
+  }
+
+  def updateShuffleBlocks(shuffleId: Int, numMapSplits: Int, mapId: Int) {
+    shuffleBlocks.synchronized {
+      var status = shuffleBlocks.get(shuffleId)
+      if (status == null) {
+        shuffleBlocks.put(shuffleId, (numMapSplits, ArrayBuffer[Int](mapId)))
+      } else {
+        status._2 += mapId
+      }
     }
   }
 

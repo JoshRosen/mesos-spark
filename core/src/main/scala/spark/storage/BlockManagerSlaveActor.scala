@@ -12,5 +12,6 @@ import spark.{Logging, SparkException, Utils}
 class BlockManagerSlaveActor(blockManager: BlockManager) extends Actor {
   override def receive = {
     case RemoveBlock(blockId) => blockManager.removeBlock(blockId)
+    case RemoveShuffleBlocks() => blockManager.removeShuffleBlocks()
   }
 }

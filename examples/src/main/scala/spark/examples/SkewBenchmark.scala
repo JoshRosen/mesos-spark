@@ -33,6 +33,8 @@ object SkewBenchmark {
 
     sc = new SparkContext(master, "SkewBenchmark")
 
+    val blockManagerMaster = SparkEnv.get.blockManager.master
+
     // Generate a skewed data set following a Zipf distribution
 
     for (alpha <- alphas) {
@@ -52,7 +54,7 @@ object SkewBenchmark {
           repetition <- 1 to NUM_REPETITONS) {
           val isPde = numBuckets > numTasks
           val time = runQuery(samples, numTasks, numBuckets)
-          removeShuffleData(numMachines)
+          blockManagerMaster.removeShuffleBlocks()
           System.out.println("TIME: " +
             Seq(alpha, isPde, diskBasedShuffle, numTasks, numBuckets, time).mkString(","))
         }
@@ -122,42 +124,13 @@ object SkewBenchmark {
     groups.toSeq
   }
 
-  def removeShuffleData(numTasks: Int) {
-    sc.parallelize(0 until numTasks, numTasks).foreach { task =>
-      SparkEnv.get.shuffleBlocks.synchronized {
-        val shuffleBlocks = SparkEnv.get.shuffleBlocks
-        val blockManager = SparkEnv.get.blockManager
-
-        shuffleBlocks.foreach { case(shuffleId, info) =>
-          val numMapOutputs: Int = info._1
-          val mapIds: ArrayBuffer[Int] = info._2
-
-          var i = 0
-          while (i < mapIds.size) {
-            var j = 0
-            while (j < numMapOutputs) {
-              blockManager.removeBlock("shuffle_" + shuffleId + "_" + mapIds(i) + "_" + j)
-              j += 1
-            }
-            i += 1
-          }
-        }
-
-        shuffleBlocks.clear()
-      }
-    }
-  }
-
   def removeCachedRdd(rdd: RDD[_], numTasks: Int) {
     val numSplits = sc.dagScheduler.getCacheLocs(rdd).size
     val rddId = rdd.id
+    val blockManagerMaster = SparkEnv.get.blockManager.master
 
-    sc.parallelize(0 until numTasks, numTasks).foreach { task =>
-      someLock.synchronized {
-        (0 until numSplits).foreach { splitIndex =>
-          SparkEnv.get.blockManager.removeBlock("rdd_%d_%d".format(rddId, splitIndex))
-        }
-      }
+    (0 until numSplits).foreach { splitIndex =>
+      blockManagerMaster.removeBlock("rdd_%d_%d".format(rddId, splitIndex))
     }
   }
 }

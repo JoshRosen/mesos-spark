@@ -201,6 +201,9 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
     case RemoveBlock(blockId) =>
       removeBlock(blockId)
 
+    case RemoveShuffleBlocks() =>
+      removeShuffleBlocks()
+
     case RemoveHost(host) =>
       removeHost(host)
       sender ! true
@@ -240,6 +243,13 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
         }
       }
       blockInfo.remove(blockId)
+    }
+    sender ! true
+  }
+
+  private def removeShuffleBlocks() {
+    for (slaveActor <- blockManagerInfo.values.map(_.slaveActor)) {
+      slaveActor ! RemoveShuffleBlocks()
     }
     sender ! true
   }
@@ -639,6 +649,13 @@ private[spark] class BlockManagerMaster(
    */
   def removeBlock(blockId: String) {
     askMaster(RemoveBlock(blockId))
+  }
+
+  /**
+   * Remove shuffle blocks from all slaves.
+   */
+  def removeShuffleBlocks() {
+    askMaster(RemoveShuffleBlocks())
   }
 
   /**

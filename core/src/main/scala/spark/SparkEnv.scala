@@ -33,20 +33,6 @@ class SparkEnv (
     val httpFileServer: HttpFileServer
   ) {
 
-  // mapping from shuffle id to (num map output splits, map ids that run on this node)
-  val shuffleBlocks = new java.util.HashMap[Int, (Int, ArrayBuffer[Int])]
-
-  def updateShuffleBlocks(shuffleId: Int, numMapSplits: Int, mapId: Int) {
-    shuffleBlocks.synchronized {
-      var status = shuffleBlocks.get(shuffleId)
-      if (status == null) {
-        shuffleBlocks.put(shuffleId, (numMapSplits, ArrayBuffer[Int](mapId)))
-      } else {
-        status._2 += mapId
-      }
-    }
-  }
-
   /** No-parameter constructor for unit tests. */
   def this() = {
     this(null, new JavaSerializer, new JavaSerializer, null, null, null, null, null, null, null)

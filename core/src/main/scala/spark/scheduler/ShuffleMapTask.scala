@@ -171,7 +171,7 @@ private[spark] class ShuffleMapTask(
       compressedSizes(i) = MapOutputTracker.compressSize(size)
     }
 
-    SparkEnv.get.updateShuffleBlocks(dep.shuffleId, numOutputSplits, partition)
+    SparkEnv.get.blockManager.updateShuffleBlocks(dep.shuffleId, numOutputSplits, partition)
 
     val statsSerialized = bucketStatsAcc match {
       case Some(acc) => acc.serializeUntyped(statsBuffer)
