@@ -42,14 +42,20 @@ object SkewBenchmark {
       samples.cache()
       samples.count() // Force evaluation
 
-      for (
-        numTasks <- taskCountMultipliers.map(_ * numMachines);
-        numBuckets <- Seq(numTasks) ++ bucketCounts;
-        repetition <- 1 to NUM_REPETITONS) {
-        val isPde = numBuckets == numTasks
-        val time = runQuery(samples, numTasks, numBuckets)
-        removeShuffleData(numMachines)
-        System.out.println("TIME: " + Seq(alpha, isPde, numTasks, numBuckets, time).mkString(","))
+      for (diskBasedShuffle <- Seq(true, false)) {
+        sc.parallelize(0 until numMachines, numMachines).foreach { task =>
+          System.setProperty("spark.diskBasedShuffle", diskBasedShuffle.toString)
+        }
+        for (
+          numTasks <- taskCountMultipliers.map(_ * numMachines);
+          numBuckets <- Seq(numTasks) ++ bucketCounts;
+          repetition <- 1 to NUM_REPETITONS) {
+          val isPde = numBuckets > numTasks
+          val time = runQuery(samples, numTasks, numBuckets)
+          removeShuffleData(numMachines)
+          System.out.println("TIME: " +
+            Seq(alpha, isPde, diskBasedShuffle, numTasks, numBuckets, time).mkString(","))
+        }
       }
       removeCachedRdd(samples, numMachines)
     }

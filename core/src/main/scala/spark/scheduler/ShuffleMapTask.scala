@@ -161,7 +161,13 @@ private[spark] class ShuffleMapTask(
           bucketIterators(i)
         }
       }
-      val size = blockManager.put(blockId, iter, StorageLevel.MEMORY_ONLY_SER, false)
+      val diskBasedShuffle = System.getProperty("spark.diskBasedShuffle", "true").toBoolean
+      val storageLevel = if (diskBasedShuffle) {
+        StorageLevel.DISK_ONLY
+      } else {
+        StorageLevel.MEMORY_ONLY_SER
+      }
+      val size = blockManager.put(blockId, iter, storageLevel, false)
       compressedSizes(i) = MapOutputTracker.compressSize(size)
     }
 
