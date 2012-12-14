@@ -717,7 +717,8 @@ class MappedValuesRDD[K, V, U](prev: RDD[(K, V)], f: V => U) extends RDD[(K, U)]
   override def splits = prev.splits
   override val dependencies = List(new OneToOneDependency(prev))
   override val partitioner = prev.partitioner
-  override def compute(split: Split) = prev.iterator(split).map{case (k, v) => (k, f(v))}
+  override def compute(split: Split, taskContext: TaskContext) =
+    prev.iterator(split, taskContext).map{case (k, v) => (k, f(v))}
 }
 
 private[spark]
@@ -728,8 +729,8 @@ class FlatMappedValuesRDD[K, V, U](prev: RDD[(K, V)], f: V => TraversableOnce[U]
   override val dependencies = List(new OneToOneDependency(prev))
   override val partitioner = prev.partitioner
 
-  override def compute(split: Split) = {
-    prev.iterator(split).flatMap { case (k, v) => f(v).map(x => (k, x)) }
+  override def compute(split: Split, taskContext: TaskContext) = {
+    prev.iterator(split, taskContext).flatMap { case (k, v) => f(v).map(x => (k, x)) }
   }
 }
 

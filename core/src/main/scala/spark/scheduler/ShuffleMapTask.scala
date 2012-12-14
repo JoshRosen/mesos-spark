@@ -117,9 +117,11 @@ private[spark] class ShuffleMapTask(
     val globalStatsAcc =
       dep.globalStatsAccumulator.asInstanceOf[Option[GlobalStatsAccumulator[Any, Any]]]
 
+    val taskContext = new TaskContext(stageId, partition, attemptId)
+
     // Partition the map output.
     val buckets = Array.fill(numOutputSplits)(new ArrayBuffer[(Any, Any)])
-    for (elem <- rdd.iterator(split)) {
+    for (elem <- rdd.iterator(split, taskContext)) {
       val pair = elem.asInstanceOf[(Any, Any)]
       val bucketId = partitioner.getPartition(pair._1)
       buckets(bucketId) += pair
@@ -180,6 +182,9 @@ private[spark] class ShuffleMapTask(
       case Some(acc) => acc.serializeUntyped(globalStat)
       case None => new Array[Byte](0)
     }
+
+    // Execute the callbacks on task completion.
+    taskContext.executeOnCompleteCallbacks()
 
     return new MapStatus(
       blockManager.blockManagerId, compressedSizes, statsSerialized, globalStatSerialized)

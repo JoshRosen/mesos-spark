@@ -5,6 +5,7 @@ import spark.RDD
 import spark.ShuffleDependency
 import spark.SparkEnv
 import spark.Split
+import spark.TaskContext
 
 /**
  * The resulting RDD from a shuffle (e.g. repartitioning of data).
@@ -34,7 +35,7 @@ class ShuffledRDDWithLocations[K, V](
   val dep = new ShuffleDependency(parent, part, None)
   override val dependencies = List(dep)
 
-  override def compute(split: Split): Iterator[(K, V)] = {
+  override def compute(split: Split, taskContext: TaskContext): Iterator[(K, V)] = {
     SparkEnv.get.shuffleFetcher.fetch[K, V](dep.shuffleId, split.index)
   }
 }

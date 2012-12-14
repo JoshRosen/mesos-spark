@@ -5,7 +5,7 @@ import java.util.{HashMap => JHashMap}
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
 
-import spark.{RDD, ShuffleDependency, SparkEnv, Split}
+import spark.{RDD, ShuffleDependency, SparkEnv, Split, TaskContext}
 
 
 class CoalescedCoGroupedRDD[K](
@@ -24,7 +24,7 @@ class CoalescedCoGroupedRDD[K](
 
   override def preferredLocations(s: Split) = Nil
 
-  override def compute(s: Split): Iterator[(K, Array[ArrayBuffer[Any]])] = {
+  override def compute(s: Split, taskContext: TaskContext): Iterator[(K, Array[ArrayBuffer[Any]])] = {
     val split = s.asInstanceOf[CoalescedShuffleSplit]
     val numRdds = shuffleIds.size
     val map = new JHashMap[K, Array[ArrayBuffer[Any]]]

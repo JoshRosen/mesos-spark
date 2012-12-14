@@ -1,6 +1,6 @@
 package spark.rdd
 
-import spark.{RDD, ShuffleDependency, SparkEnv, Split}
+import spark.{RDD, ShuffleDependency, SparkEnv, Split, TaskContext}
 
 
 // TODO(rxin): set partitioner.
@@ -24,7 +24,7 @@ class CoalescedShuffleFetcherRDD[K, V](
 
   override val dependencies = List(dep)
 
-  override def compute(split: Split) = {
+  override def compute(split: Split, taskContext: TaskContext) = {
     val fetcher = SparkEnv.get.shuffleFetcher
     val reduceIds = split.asInstanceOf[CoalescedShuffleSplit].partitions
     fetcher.fetchMultiple(shuffleId, reduceIds)

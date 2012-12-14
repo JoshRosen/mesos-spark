@@ -74,13 +74,13 @@ class StandaloneSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Actor
         context.stop(self)
 
       case Terminated(actor) =>
-        actorToSlaveId.get(actor).foreach(removeSlave)
+        actorToSlaveId.get(actor).foreach(removeSlave(_, "Akka actor terminated"))
 
       case RemoteClientDisconnected(transport, address) =>
-        addressToSlaveId.get(address).foreach(removeSlave)
+        addressToSlaveId.get(address).foreach(removeSlave(_, "remote Akka client disconnected"))
 
       case RemoteClientShutdown(transport, address) =>
-        addressToSlaveId.get(address).foreach(removeSlave)
+        addressToSlaveId.get(address).foreach(removeSlave(_, "remote Akka client shutdown"))
     }
 
     // Make fake resource offers on all slaves
@@ -112,7 +112,7 @@ class StandaloneSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Actor
     }
 
     // Remove a disconnected slave from the cluster
-    def removeSlave(slaveId: String) {
+    def removeSlave(slaveId: String, reason: String) {
       logInfo("Slave " + slaveId + " disconnected, so removing it")
       val numCores = freeCores(slaveId)
       actorToSlaveId -= slaveActor(slaveId)
@@ -122,7 +122,7 @@ class StandaloneSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Actor
       freeCores -= slaveId
       slaveHost -= slaveId
       totalCoreCount.addAndGet(-numCores)
-      scheduler.slaveLost(slaveId)
+      scheduler.slaveLost(slaveId, SlaveLost(reason))
     }
   }
 

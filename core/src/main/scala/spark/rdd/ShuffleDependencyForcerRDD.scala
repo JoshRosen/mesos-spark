@@ -5,6 +5,7 @@ import spark.RDD
 import spark.ShuffleDependency
 import spark.SparkEnv
 import spark.Split
+import spark.TaskContext
 
 
 class ShuffleDependencyForcerRDD[K: ClassManifest, V: ClassManifest](
@@ -13,6 +14,6 @@ class ShuffleDependencyForcerRDD[K: ClassManifest, V: ClassManifest](
 
   override def splits = Array(new ShuffledRDDSplit(1))
   override val dependencies = List(dep)
-  override def compute(split: Split) = null
+  override def compute(split: Split, taskContext: TaskContext) = null
   override def preferredLocations(split: Split) = Nil
 }
