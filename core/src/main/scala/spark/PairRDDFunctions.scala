@@ -50,15 +50,20 @@ class PairRDDFunctions[K: ClassManifest, V: ClassManifest](
   with Serializable {
 
   def preshuffle(part: Partitioner): PreshuffleResult[K, V, _, _] =
-    preshuffle(part, None, None)(classManifest[Any].asInstanceOf[ClassManifest[_]])
+    preshuffle(part, None, None, true)(classManifest[Any].asInstanceOf[ClassManifest[_]])
+
+  def preshuffle(part: Partitioner, diskBasedShuffle: Boolean): PreshuffleResult[K, V, _, _] =
+    preshuffle(part, None, None, diskBasedShuffle)(classManifest[Any].asInstanceOf[ClassManifest[_]])
 
   def preshuffle[R1: ClassManifest, R2](
     part: Partitioner,
     bucketStatsAcc: Option[PartitionStatsAccumulator[(K, V), R1]],
-    globalStatsAcc: Option[GlobalStatsAccumulator[(K, V), R2]] = None)
+    globalStatsAcc: Option[GlobalStatsAccumulator[(K, V), R2]] = None,
+    diskBasedShuffle: Boolean = true)
   : PreshuffleResult[K, V, R1, R2] = {
 
-    val dep = new ShuffleDependency[K, V](self, part, bucketStatsAcc, globalStatsAcc)
+    val dep = new ShuffleDependency[K, V](self, part, bucketStatsAcc, globalStatsAcc,
+      diskBasedShuffle)
     val depForcer = new ShuffleDependencyForcerRDD(self, dep)
     val numMappers = self.context.runJob(depForcer, (iter: Iterator[_]) => {}).size
 

@@ -161,8 +161,7 @@ private[spark] class ShuffleMapTask(
           bucketIterators(i)
         }
       }
-      val diskBasedShuffle = System.getProperty("spark.diskBasedShuffle", "true").toBoolean
-      val storageLevel = if (diskBasedShuffle) {
+      val storageLevel = if (dep.diskBasedShuffle) {
         StorageLevel.DISK_ONLY
       } else {
         StorageLevel.MEMORY_ONLY_SER

@@ -28,7 +28,8 @@ class ShuffleDependency[K, V](
     @transient rdd: RDD[(K, V)],
     val partitioner: Partitioner,
     val bucketStatsAccumulator: Option[PartitionStatsAccumulator[(K, V), _]] = None,
-    val globalStatsAccumulator: Option[GlobalStatsAccumulator[(K, V), _]] = None)
+    val globalStatsAccumulator: Option[GlobalStatsAccumulator[(K, V), _]] = None,
+    val diskBasedShuffle: Boolean = true)
   extends Dependency(rdd) {
 
   val shuffleId: Int = rdd.context.newShuffleId()

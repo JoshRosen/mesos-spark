@@ -45,18 +45,15 @@ object SkewBenchmark {
       samples.count() // Force evaluation
 
       for (diskBasedShuffle <- Seq(true, false)) {
-        sc.parallelize(0 until numMachines, numMachines).foreach { task =>
-          System.setProperty("spark.diskBasedShuffle", diskBasedShuffle.toString)
-        }
         for (
           numTasks <- taskCountMultipliers.map(_ * numMachines);
           numBuckets <- Seq(numTasks) ++ bucketCounts;
           repetition <- 1 to NUM_REPETITONS) {
           val isPde = numBuckets > numTasks
-          val time = runQuery(samples, numTasks, numBuckets)
+          val time = runQuery(samples, numTasks, numBuckets, diskBasedShuffle)
           blockManagerMaster.removeShuffleBlocks()
           System.out.println("TIME: " +
-            Seq(alpha, isPde, diskBasedShuffle, numTasks, numBuckets, time).mkString(","))
+            Seq(alpha, diskBasedShuffle, isPde, numTasks, numBuckets, time).mkString(","))
         }
       }
       removeCachedRdd(samples, numMachines)
@@ -64,10 +61,11 @@ object SkewBenchmark {
     System.exit(0)
   }
 
-  def runQuery(data : RDD[(Int, String)], numTasks: Int, numBuckets: Int): Long = {
+  def runQuery(data : RDD[(Int, String)], numTasks: Int, numBuckets: Int,
+    diskBasedShuffle: Boolean): Long = {
     val startTime = System.currentTimeMillis()
     val partitioner = new HashPartitioner(numBuckets)
-    val preshuffleResult = data.preshuffle(partitioner)
+    val preshuffleResult = data.preshuffle(partitioner, diskBasedShuffle)
     val totalBytes = preshuffleResult.sizes.sum
     System.out.println("Total bytes: " + totalBytes)
     val groups: Array[Array[Int]] = {

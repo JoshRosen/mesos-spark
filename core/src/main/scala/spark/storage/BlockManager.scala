@@ -247,15 +247,15 @@ class BlockManager(
 
     // As an optimization for map output fetches, if the block is for a shuffle, return it
     // without acquiring a lock; the disk store never deletes (recent) items so this should work
-    val diskBasedShuffle = System.getProperty("spark.diskBasedShuffle", "true").toBoolean
-    if (diskBasedShuffle && blockId.startsWith("shuffle_")) {
-      return diskStore.getValues(blockId) match {
-        case Some(iterator) =>
-          Some(iterator)
-        case None =>
-          throw new Exception("Block " + blockId + " not found on disk, though it should be")
-      }
-    }
+    // val diskBasedShuffle = System.getProperty("spark.diskBasedShuffle", "true").toBoolean
+    // if (diskBasedShuffle && blockId.startsWith("shuffle_")) {
+    //   return diskStore.getValues(blockId) match {
+    //     case Some(iterator) =>
+    //       Some(iterator)
+    //     case None =>
+    //       throw new Exception("Block " + blockId + " not found on disk, though it should be")
+    //   }
+    // }
 
     val info = blockInfo.get(blockId)
     if (info != null) {
@@ -333,15 +333,15 @@ class BlockManager(
 
     // As an optimization for map output fetches, if the block is for a shuffle, return it
     // without acquiring a lock; the disk store never deletes (recent) items so this should work
-    val diskBasedShuffle = System.getProperty("spark.diskBasedShuffle", "true").toBoolean
-    if (diskBasedShuffle && blockId.startsWith("shuffle_")) {
-      return diskStore.getBytes(blockId) match {
-        case Some(bytes) =>
-          Some(bytes)
-        case None =>
-          throw new Exception("Block " + blockId + " not found on disk, though it should be")
-      }
-    }
+    // val diskBasedShuffle = System.getProperty("spark.diskBasedShuffle", "true").toBoolean
+    // if (diskBasedShuffle && blockId.startsWith("shuffle_")) {
+    //  return diskStore.getBytes(blockId) match {
+    //    case Some(bytes) =>
+    //      Some(bytes)
+    //    case None =>
+    //      throw new Exception("Block " + blockId + " not found on disk, though it should be")
+    //   }
+    // }
 
     val info = blockInfo.get(blockId)
     if (info != null) {
