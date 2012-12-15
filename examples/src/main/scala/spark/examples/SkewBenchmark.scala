@@ -14,8 +14,8 @@ import it.unimi.dsi.fastutil.objects.{Object2LongOpenHashMap => OLMap}
 
 object SkewBenchmark {
   val alphas = Seq(1.1, 1.2, 1.3, 1.4, 1.5)
-  val taskCountMultipliers = Seq(1, 2, 4, 8)
-  val bucketCounts = Seq(10, 100, 1000)
+  val taskCountMultipliers = Seq(1, 2, 4, 8, 16)
+  val bucketCountMultipliers = Seq(1, 10, 100, 1000)
   val POINTS_PER_TASK = 1000000
   val NUM_REPETITONS = 5
 
@@ -47,7 +47,7 @@ object SkewBenchmark {
       for (diskBasedShuffle <- Seq(true, false)) {
         for (
           numTasks <- taskCountMultipliers.map(_ * numMachines);
-          numBuckets <- Seq(numTasks) ++ bucketCounts;
+          numBuckets <- bucketCountMultipliers.map(_ * numTasks);
           repetition <- 1 to NUM_REPETITONS) {
           val isPde = numBuckets > numTasks
           val time = runQuery(samples, numTasks, numBuckets, diskBasedShuffle)
