@@ -52,11 +52,13 @@ object SkewBenchmark {
           val isPde = numBuckets > numTasks
           val time = runQuery(samples, numTasks, numBuckets, diskBasedShuffle)
           blockManagerMaster.removeShuffleBlocks()
+          sc.parallelize(1 to numMachines, numMachines).foreach { _ => System.gc() }
           System.out.println("TIME: " +
             Seq(alpha, diskBasedShuffle, isPde, numTasks, numBuckets, time).mkString(","))
         }
       }
       removeCachedRdd(samples, numMachines)
+      sc.parallelize(1 to numMachines, numMachines).foreach { _ => System.gc() }
     }
     System.exit(0)
   }
