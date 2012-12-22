@@ -10,6 +10,7 @@ import spark.SparkContext._
 import spark.rdd.CoalescedShuffleFetcherRDD
 
 import it.unimi.dsi.fastutil.objects.{Object2LongOpenHashMap => OLMap}
+import org.apache.hadoop.io.file.tfile.RandomDistribution
 
 
 object SkewBenchmark {
@@ -18,6 +19,8 @@ object SkewBenchmark {
   val bucketCountMultipliers = Seq(1, 10, 100, 1000)
   val POINTS_PER_TASK = 1000000
   val NUM_REPETITONS = 5
+  val RAND_SEED = 42
+
 
   val someLock = new Object
 
@@ -38,9 +41,12 @@ object SkewBenchmark {
     // Generate a skewed data set following a Zipf distribution
 
     for (alpha <- alphas) {
-      // Create the data set
-      val samples : RDD[(Int, String)] = sc.parallelize(1 to numMachines,
-        numMachines).flatMap(_ => generate_zipf(POINTS_PER_TASK, alpha))
+      // Create the data set.  To ensure that partitions are deterministically recomputed,
+      // we will choose the random seeds here:
+      val rand = new Random(RAND_SEED)
+      val randomSeeds = sc.parallelize(1.to(numMachines).map(rand.nextInt), numMachines)
+      val samples : RDD[(Int, String)] =
+        randomSeeds.flatMap(seed => generate_zipf(POINTS_PER_TASK, alpha, genSeed=seed))
       samples.cache()
       samples.count() // Force evaluation
 
@@ -92,17 +98,17 @@ object SkewBenchmark {
   }
 
   def generate_zipf(numSamples: Int, alpha: Double, minKey: Int = 1, maxKey: Int = 1000000,
-    seed: Int = 42) : Seq[(Int, String)] = {
-    val rand = new Random(seed)
+    shuffleSeed: Int = 42, genSeed: Int = 42) : Seq[(Int, String)] = {
+    val shuffleRand = new Random(shuffleSeed)
     // Shuffle the keys randomly to prevent the largest partitions from being
     // hashed into adjacent buckets:
-    val keyMappingTable = rand.shuffle(0.to(maxKey).toSeq).toArray
-    val g = new org.apache.hadoop.io.file.tfile.RandomDistribution.Zipf(
-      new java.util.Random, minKey, maxKey, alpha)
+    val keyMappingTable = shuffleRand.shuffle(0.to(maxKey).toSeq).toArray
+    val genRand = new java.util.Random(genSeed)
+    val g = new RandomDistribution.Zipf(genRand, minKey, maxKey, alpha)
     val range = 0 to 9
     // Multiply by 10 and add random noise to  keep the top key from being
     // overloaded.
-    (1 to numSamples).map(i => (keyMappingTable(g.nextInt) * 10 + range(Random.nextInt(10)),
+    (1 to numSamples).map(i => (keyMappingTable(g.nextInt) * 10 + range(genRand.nextInt(10)),
       nextASCIIString(48)))
   }
 
