@@ -5,7 +5,7 @@ import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable
 
-import spark.{SparkEnv, RDD, HashPartitioner, SparkContext}
+import spark._
 import spark.SparkContext._
 import spark.rdd.CoalescedShuffleFetcherRDD
 
@@ -83,7 +83,12 @@ object SkewBenchmark {
       bins.map(_._2.toArray).toArray
     }
     val coalesced = new CoalescedShuffleFetcherRDD(data, groups, preshuffleResult.dep)
-    coalesced.count // Force evaluation.  TODO: actually do something in the reduce phase.
+    val countAggregator = new Aggregator[Int, String, Int](
+      _ => 1,
+      (count, data) => count + 1,
+      _ + _
+    )
+    coalesced.mapPartitions(countAggregator.combineValuesByKey).map(_._2).sum()
     val time = System.currentTimeMillis() - startTime
     time
   }
