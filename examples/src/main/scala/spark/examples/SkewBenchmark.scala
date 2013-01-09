@@ -1,24 +1,18 @@
 package spark.examples
 
 import scala.util.Random
-import scala.collection.JavaConversions._
-import scala.collection.mutable.ArrayBuffer
-import scala.collection.mutable
 
 import spark._
 import spark.SparkContext._
-import spark.rdd.CoalescedShuffleFetcherRDD
 
 import it.unimi.dsi.fastutil.objects.{Object2LongOpenHashMap => OLMap}
 import org.apache.hadoop.io.file.tfile.RandomDistribution
 
 
 object SkewBenchmark {
-  val alphas = Seq(1.1, 1.2, 1.3, 1.4, 1.5)
-  val taskCountMultipliers = Seq(1, 2, 4, 8, 16)
-  val bucketCountMultipliers = Seq(1, 10, 100, 1000)
+  val taskCountMultipliers = Seq(1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 62, 64, 128, 256)
   val POINTS_PER_TASK = 1000000
-  val NUM_REPETITONS = 5
+  val NUM_REPETITONS = 10
   val RAND_SEED = 42
 
 
@@ -40,55 +34,30 @@ object SkewBenchmark {
 
     // Generate a skewed data set following a Zipf distribution
 
-    for (alpha <- alphas) {
-      // Create the data set.  To ensure that partitions are deterministically recomputed,
-      // we will choose the random seeds here:
-      val rand = new Random(RAND_SEED)
-      val randomSeeds = sc.parallelize(1.to(numMachines).map(rand.nextInt), numMachines)
-      val samples : RDD[(Int, String)] =
-        randomSeeds.flatMap(seed => generate_zipf(POINTS_PER_TASK, alpha, genSeed=seed))
-      samples.cache()
-      samples.count() // Force evaluation
+    // Create the data set.  To ensure that partitions are deterministically recomputed,
+    // we will choose the random seeds here:
+    val rand = new Random(RAND_SEED)
+    val randomSeeds = sc.parallelize(1.to(numMachines).map(rand.nextInt), numMachines)
+    val samples : RDD[(Int, String)] =
+      randomSeeds.flatMap(seed => generate_data(POINTS_PER_TASK, genSeed=seed))
+    samples.cache()
+    samples.count() // Force evaluation
 
-      for (diskBasedShuffle <- Seq(true, false)) {
-        for (
-          numTasks <- taskCountMultipliers.map(_ * numMachines);
-          numBuckets <- bucketCountMultipliers.map(_ * numTasks);
-          repetition <- 1 to NUM_REPETITONS) {
-          val isPde = numBuckets > numTasks
-          val time = runQuery(samples, numTasks, numBuckets, diskBasedShuffle)
-          blockManagerMaster.removeShuffleBlocks()
-          sc.parallelize(1 to numMachines, numMachines).foreach { _ => System.gc() }
-          System.out.println("TIME: " +
-            Seq(alpha, diskBasedShuffle, isPde, numTasks, numBuckets, time).mkString(","))
-        }
-      }
-      removeCachedRdd(samples, numMachines)
+    for (numTasks <- taskCountMultipliers.map(_ * numMachines);
+         rep <- 1 to NUM_REPETITONS) {
+      val time = runQuery(samples, numTasks)
+      blockManagerMaster.removeShuffleBlocks()
       sc.parallelize(1 to numMachines, numMachines).foreach { _ => System.gc() }
+      System.out.println("TIME: " + Seq(numTasks, time).mkString(","))
     }
+
     System.exit(0)
   }
 
-  def runQuery(data : RDD[(Int, String)], numTasks: Int, numBuckets: Int,
-    diskBasedShuffle: Boolean): Long = {
+  def runQuery(data : RDD[(Int, String)], numTasks: Int): Long = {
     val startTime = System.currentTimeMillis()
-    val partitioner = new HashPartitioner(numBuckets)
-    val preshuffleResult = data.preshuffle(partitioner, diskBasedShuffle)
-    val totalBytes = preshuffleResult.sizes.sum
-    System.out.println("Total bytes: " + totalBytes)
-    val groups: Array[Array[Int]] = {
-      val nonEmptyPartitions = preshuffleResult.sizes.zipWithIndex.filter(_._1 != 0)
-      val bins = packBins[Int](numTasks, nonEmptyPartitions)
-      System.out.println("Group costs are " + bins.map(_._1).sorted.toIndexedSeq)
-      bins.map(_._2.toArray).toArray
-    }
-    val coalesced = new CoalescedShuffleFetcherRDD(data, groups, preshuffleResult.dep)
-    val countAggregator = new Aggregator[Int, String, Int](
-      _ => 1,
-      (count, data) => count + 1,
-      _ + _
-    )
-    coalesced.mapPartitions(countAggregator.combineValuesByKey).map(_._2).sum()
+    val partitioner = new HashPartitioner(numTasks)
+    data.groupByKey(partitioner).count()
     val time = System.currentTimeMillis() - startTime
     time
   }
@@ -102,46 +71,10 @@ object SkewBenchmark {
     new String(Array.fill(length)(nextDigit.toByte), "ASCII")
   }
 
-  def generate_zipf(numSamples: Int, alpha: Double, minKey: Int = 1, maxKey: Int = 1000000,
-    shuffleSeed: Int = 42, genSeed: Int = 42) : Seq[(Int, String)] = {
-    val shuffleRand = new Random(shuffleSeed)
-    // Shuffle the keys randomly to prevent the largest partitions from being
-    // hashed into adjacent buckets:
-    val keyMappingTable = shuffleRand.shuffle(0.to(maxKey).toSeq).toArray
+  def generate_data(numSamples: Int, minKey: Int = 1, maxKey: Int = 1000000,
+    genSeed: Int = 42) : Seq[(Int, String)] = {
     val genRand = new java.util.Random(genSeed)
-    val g = new RandomDistribution.Zipf(genRand, minKey, maxKey, alpha)
-    val range = 0 to 9
-    // Multiply by 10 and add random noise to  keep the top key from being
-    // overloaded.
-    (1 to numSamples).map(i => (keyMappingTable(g.nextInt) * 10 + range(genRand.nextInt(10)),
-      nextASCIIString(48)))
-  }
-
-  /**
-   * Greedily pack bins.  In increasing order of cost, assigns each item to the bin with the lowest total cost.
-   * @param nBins the number of bins
-   * @param items a list of (cost, item) pairs
-   * @return a list of (groupCost, groupItem) pairs, representing the grouping.
-   */
-  def packBins[T](nBins: Int, items: Seq[(Long, T)]): Seq[(Long, Seq[T])] = {
-    val groupOrdering = Ordering.by[(Long, ArrayBuffer[T]), Long](_._1).reverse
-    val groups = mutable.PriorityQueue[(Long, ArrayBuffer[T])]()(groupOrdering)
-    1.to(nBins).foreach(x => groups.enqueue((0L, ArrayBuffer[T]())))
-    for (partition <- items.sortBy(- _._1)) {
-      val (cost, assignedItems) = groups.dequeue()
-      assignedItems.append(partition._2)
-      groups.enqueue((cost + partition._1, assignedItems))
-    }
-    groups.toSeq
-  }
-
-  def removeCachedRdd(rdd: RDD[_], numTasks: Int) {
-    val numSplits = sc.dagScheduler.getCacheLocs(rdd).size
-    val rddId = rdd.id
-    val blockManagerMaster = SparkEnv.get.blockManager.master
-
-    (0 until numSplits).foreach { splitIndex =>
-      blockManagerMaster.removeBlock("rdd_%d_%d".format(rddId, splitIndex))
-    }
+    val g = new RandomDistribution.Flat(genRand, minKey, maxKey)
+    (1 to numSamples).map(i => (g.nextInt, nextASCIIString(48)))
   }
 }
