@@ -168,9 +168,7 @@ object HadoopWriter {
   }
   
   def createPathFromString(path: String, conf: JobConf): Path = {
-    if (path == null) {
-      throw new IllegalArgumentException("Output path is null")
-    }
+    require(path != null, "Output path is null")
     var outputPath = new Path(path)
     val fs = outputPath.getFileSystem(conf)
     if (outputPath == null || fs == null) {

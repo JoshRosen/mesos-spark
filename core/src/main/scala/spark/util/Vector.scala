@@ -6,20 +6,17 @@ class Vector(val elements: Array[Double]) extends Serializable {
   def apply(index: Int) = elements(index)
 
   def + (other: Vector): Vector = {
-    if (length != other.length)
-      throw new IllegalArgumentException("Vectors of different length")
+    require(length == other.length, "Vectors of different length")
     return Vector(length, i => this(i) + other(i))
   }
 
   def - (other: Vector): Vector = {
-    if (length != other.length)
-      throw new IllegalArgumentException("Vectors of different length")
+    require(length == other.length, "Vectors of different length")
     return Vector(length, i => this(i) - other(i))
   }
 
   def dot(other: Vector): Double = {
-    if (length != other.length)
-      throw new IllegalArgumentException("Vectors of different length")
+    require(length == other.length, "Vectors of different length")
     var ans = 0.0
     var i = 0
     while (i < length) {
@@ -36,10 +33,8 @@ class Vector(val elements: Array[Double]) extends Serializable {
    * @return
    */
   def plusDot(plus: Vector, other: Vector): Double = {
-    if (length != other.length)
-      throw new IllegalArgumentException("Vectors of different length")
-    if (length != plus.length)
-      throw new IllegalArgumentException("Vectors of different length")
+    require(length == other.length, "Vectors of different length")
+    require(length == plus.length, "Vectors of different length")
     var ans = 0.0
     var i = 0
     while (i < length) {
@@ -50,8 +45,7 @@ class Vector(val elements: Array[Double]) extends Serializable {
   }
 
   def += (other: Vector): Vector = {
-    if (length != other.length)
-      throw new IllegalArgumentException("Vectors of different length")
+    require(length == other.length, "Vectors of different length")
     var ans = 0.0
     var i = 0
     while (i < length) {

@@ -64,9 +64,7 @@ private object ParallelCollection {
    * it efficient to run Spark over RDDs representing large sets of numbers.
    */
   def slice[T: ClassManifest](seq: Seq[T], numSlices: Int): Seq[Seq[T]] = {
-    if (numSlices < 1) {
-      throw new IllegalArgumentException("Positive number of slices required")
-    }
+    require(numSlices >= 1, "Positive number of slices required")
     seq match {
       case r: Range.Inclusive => {
         val sign = if (r.step < 0) {

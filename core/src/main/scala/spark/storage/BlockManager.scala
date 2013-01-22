@@ -22,6 +22,7 @@ import spark.serializer.Serializer
 import spark.util.{ByteBufferInputStream, IdGenerator, MetadataCleaner, TimeStampedHashMap}
 
 import sun.nio.ch.DirectBuffer
+import com.google.common.base.Preconditions
 
 
 private[spark]
@@ -380,9 +381,7 @@ class BlockManager(
    * Get block from remote block managers.
    */
   def getRemote(blockId: String): Option[Iterator[Any]] = {
-    if (blockId == null) {
-      throw new IllegalArgumentException("Block Id is null")
-    }
+    require(blockId != null, "Block Id is null")
     logDebug("Getting remote block " + blockId)
     // Get locations of block
     val locations = master.getLocations(blockId)
@@ -417,10 +416,7 @@ class BlockManager(
    */
   def getMultiple(blocksByAddress: Seq[(BlockManagerId, Seq[(String, Long)])])
       : Iterator[(String, Option[Iterator[Any]])] = {
-
-    if (blocksByAddress == null) {
-      throw new IllegalArgumentException("BlocksByAddress is null")
-    }
+    require(blocksByAddress != null, "BlocksByAddress is null")
     val totalBlocks = blocksByAddress.map(_._2.size).sum
     logDebug("Getting " + totalBlocks + " blocks")
     var startTime = System.currentTimeMillis
@@ -577,15 +573,10 @@ class BlockManager(
   def put(blockId: String, values: ArrayBuffer[Any], level: StorageLevel,
     tellMaster: Boolean = true) : Long = {
 
-    if (blockId == null) {
-      throw new IllegalArgumentException("Block Id is null")
-    }
-    if (values == null) {
-      throw new IllegalArgumentException("Values is null")
-    }
-    if (level == null || !level.isValid) {
-      throw new IllegalArgumentException("Storage level is null or invalid")
-    }
+    require(blockId != null, "Block Id is null")
+    require(values != null, "Values is null")
+    require(level != null, "Storage level is null")
+    require(level.isValid, "Storage level is invalid")
 
     val oldBlock = blockInfo.get(blockId).orNull
     if (oldBlock != null) {
@@ -678,15 +669,10 @@ class BlockManager(
   def putBytes(
     blockId: String, bytes: ByteBuffer, level: StorageLevel, tellMaster: Boolean = true) {
 
-    if (blockId == null) {
-      throw new IllegalArgumentException("Block Id is null")
-    }
-    if (bytes == null) {
-      throw new IllegalArgumentException("Bytes is null")
-    }
-    if (level == null || !level.isValid) {
-      throw new IllegalArgumentException("Storage level is null or invalid")
-    }
+    require(blockId != null, "Block Id is null")
+    require(bytes != null, "Bytes is null")
+    require(level != null, "Storage level is null")
+    require(level.isValid, "Storage level is invalid")
 
     if (blockInfo.contains(blockId)) {
       logWarning("Block " + blockId + " already exists on this machine; not re-adding it")

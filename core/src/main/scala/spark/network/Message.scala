@@ -156,9 +156,7 @@ private[spark] object MessageChunkHeader {
   val HEADER_SIZE = 40 
   
   def create(buffer: ByteBuffer): MessageChunkHeader = {
-    if (buffer.remaining != HEADER_SIZE) {
-      throw new IllegalArgumentException("Cannot convert buffer data to Message")
-    }
+    require(buffer.remaining == HEADER_SIZE, "Cannot convert buffer data to Message")
     val typ = buffer.getLong()
     val id = buffer.getInt()
     val totalSize = buffer.getInt()

@@ -1,5 +1,7 @@
 package spark.api.java;
 
+import com.google.common.base.Preconditions;
+
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
@@ -8,9 +10,7 @@ import java.util.List;
 // http://scala-programming-language.1934581.n4.nabble.com/Workaround-for-implementing-java-varargs-in-2-7-2-final-tp1944767p1944772.html
 abstract class JavaSparkContextVarargsWorkaround {
   public <T> JavaRDD<T> union(JavaRDD<T>... rdds) {
-    if (rdds.length == 0) {
-      throw new IllegalArgumentException("Union called on empty list");
-    }
+    Preconditions.checkArgument(rdds.length != 0, "Union called on empty list");
     ArrayList<JavaRDD<T>> rest = new ArrayList<JavaRDD<T>>(rdds.length - 1);
     for (int i = 1; i < rdds.length; i++) {
       rest.add(rdds[i]);
@@ -19,9 +19,7 @@ abstract class JavaSparkContextVarargsWorkaround {
   }
 
   public JavaDoubleRDD union(JavaDoubleRDD... rdds) {
-    if (rdds.length == 0) {
-      throw new IllegalArgumentException("Union called on empty list");
-    }
+    Preconditions.checkArgument(rdds.length != 0, "Union called on empty list");
     ArrayList<JavaDoubleRDD> rest = new ArrayList<JavaDoubleRDD>(rdds.length - 1);
     for (int i = 1; i < rdds.length; i++) {
       rest.add(rdds[i]);
@@ -30,9 +28,7 @@ abstract class JavaSparkContextVarargsWorkaround {
   }
 
   public <K, V> JavaPairRDD<K, V> union(JavaPairRDD<K, V>... rdds) {
-    if (rdds.length == 0) {
-      throw new IllegalArgumentException("Union called on empty list");
-    }
+    Preconditions.checkArgument(rdds.length != 0, "Union called on empty list");
     ArrayList<JavaPairRDD<K, V>> rest = new ArrayList<JavaPairRDD<K, V>>(rdds.length - 1);
     for (int i = 1; i < rdds.length; i++) {
       rest.add(rdds[i]);

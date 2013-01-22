@@ -87,9 +87,7 @@ private[spark] class MapOutputTracker(actorSystem: ActorSystem, isMaster: Boolea
   }
 
   def registerShuffle(shuffleId: Int, numMaps: Int) {
-    if (mapStatuses.get(shuffleId) != None) {
-      throw new IllegalArgumentException("Shuffle ID " + shuffleId + " registered twice")
-    }
+    require(mapStatuses.get(shuffleId) == None, "Shuffle ID " + shuffleId + " registered twice")
     mapStatuses.put(shuffleId, new Array[MapStatus](numMaps))
   }
 
