@@ -68,7 +68,7 @@ private[spark] class PythonRDD[T: ClassManifest](
         // Split index
         dOut.writeInt(split.index)
         // sparkFilesDir
-        PythonRDD.writeAsPickle(SparkFiles.getRootDirectory, dOut)
+        PythonRDD.writeStringAsPickle(SparkFiles.getRootDirectory, dOut)
         // Broadcast variables
         dOut.writeInt(broadcastVars.length)
         for (broadcast <- broadcastVars) {
@@ -193,7 +193,7 @@ private[spark] object PythonRDD {
       val arr = elem.asInstanceOf[Array[Byte]]
       dOut.writeInt(arr.length)
       dOut.write(arr)
-    } else if (elem.isInstanceOf[scala.Tuple2[Array[Byte], Array[Byte]]]) {
+    /*} else if (elem.isInstanceOf[scala.Tuple2[Array[Byte], Array[Byte]]]) {
       val t = elem.asInstanceOf[scala.Tuple2[Array[Byte], Array[Byte]]]
       val length = t._1.length + t._2.length - 3 - 3 + 4  // stripPickle() removes 3 bytes
       dOut.writeInt(length)
@@ -202,21 +202,27 @@ private[spark] object PythonRDD {
       dOut.write(PythonRDD.stripPickle(t._1))
       dOut.write(PythonRDD.stripPickle(t._2))
       dOut.writeByte(Pickle.TUPLE2)
-      dOut.writeByte(Pickle.STOP)
+      dOut.writeByte(Pickle.STOP)  */
     } else if (elem.isInstanceOf[String]) {
-      // For uniformity, strings are wrapped into Pickles.
       val s = elem.asInstanceOf[String].getBytes("UTF-8")
-      val length = 2 + 1 + 4 + s.length + 1
-      dOut.writeInt(length)
-      dOut.writeByte(Pickle.PROTO)
-      dOut.writeByte(Pickle.TWO)
-      dOut.write(Pickle.BINUNICODE)
-      dOut.writeInt(Integer.reverseBytes(s.length))
+      dOut.writeInt(s.length)
       dOut.write(s)
-      dOut.writeByte(Pickle.STOP)
     } else {
       throw new Exception("Unexpected RDD type")
     }
+  }
+
+  def writeStringAsPickle(elem: String, dOut: DataOutputStream) {
+    // For uniformity, strings are wrapped into Pickles.
+    val s = elem.getBytes("UTF-8")
+    val length = 2 + 1 + 4 + s.length + 1
+    dOut.writeInt(length)
+    dOut.writeByte(Pickle.PROTO)
+    dOut.writeByte(Pickle.TWO)
+    dOut.write(Pickle.BINUNICODE)
+    dOut.writeInt(Integer.reverseBytes(s.length))
+    dOut.write(s)
+    dOut.writeByte(Pickle.STOP)
   }
 
   def readRDDFromPickleFile(sc: JavaSparkContext, filename: String, parallelism: Int) :

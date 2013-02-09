@@ -540,12 +540,15 @@ class RDD(object):
         # form the hash buckets in Python, transferring O(numSplits) objects
         # to Java.  Each object is a (splitNumber, [objects]) pair.
         dumps = self.ctx.serializer.dumps
+        is_batched = self.ctx._batchSize != 1
         def add_shuffle_key(split, iterator):
             buckets = defaultdict(list)
             for (k, v) in iterator:
                 buckets[partitionFunc(k) % numSplits].append((k, v))
             for (split, items) in buckets.iteritems():
                 yield str(split)
+                if is_batched:
+                    items = [items]
                 yield dumps(items)
         keyed = PipelinedRDD(self, add_shuffle_key)
         keyed._bypass_serializer = True
