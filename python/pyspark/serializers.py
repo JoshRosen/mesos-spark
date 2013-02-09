@@ -1,42 +1,116 @@
+from pyspark import cloudpickle
 import struct
 import cPickle
+import marshal
 
 
-class Batch(object):
+__all__ = ["Serializer", "NoOpSerializer", "PickleSerializer",
+           "MarshalSerializer"]
+
+
+class Serializer(object):
     """
-    Used to store multiple RDD entries as a single Java object.
-
-    This relieves us from having to explicitly track whether an RDD
-    is stored as batches of objects and avoids problems when processing
-    the union() of batched and unbatched RDDs (e.g. the union() of textFile()
-    with another RDD).
+    Base class for serializers.  Custom serializers should implement C{loads}
+    and C{dumps}.
     """
-    def __init__(self, items):
-        self.items = items
+
+    @classmethod
+    def write_with_length(cls, obj, stream):
+        serialized = cls.dumps(obj)
+        write_int(len(serialized), stream)
+        stream.write(serialized)
+
+    @classmethod
+    def read_with_length(cls, stream):
+        length = read_int(stream)
+        obj = stream.read(length)
+        if obj == "":
+            raise EOFError
+        return cls.loads(obj)
+
+    @classmethod
+    def read_from_file(cls, stream):
+        try:
+            while True:
+                yield cls.read_with_length(stream)
+        except EOFError:
+            return
+
+    @classmethod
+    def write_to_file(cls, iterator, stream):
+        for obj in iterator:
+            cls.write_with_length(obj, stream)
+
+    @staticmethod
+    def dumps(obj):
+        raise NotImplementedError
+
+    @staticmethod
+    def loads(obj):
+        raise NotImplementedError
 
 
-def batched(iterator, batchSize):
-    if batchSize == -1: # unlimited batch size
-        yield Batch(list(iterator))
-    else:
-        items = []
-        count = 0
-        for item in iterator:
-            items.append(item)
-            count += 1
-            if count == batchSize:
-                yield Batch(items)
-                items = []
-                count = 0
-        if items:
-            yield Batch(items)
+class BatchedSerializer(Serializer):
+
+    def __init__(self, serializer, batchSize):
+        self.serializer = serializer
+        self.batchSize = batchSize
+
+    def dumps(self, obj):
+        return self.serializer.dumps(obj)
+
+    def loads(self, obj):
+        return self.serializer.loads(obj)
+
+    def write_to_file(self, iterator, stream):
+        if isinstance(iterator, basestring):
+            iterator = [iterator]
+        if self.batchSize == -1:
+            self.serializer.write_with_length(list(iterator), stream)
+        else:
+            items = []
+            count = 0
+            for item in iterator:
+                items.append(item)
+                count += 1
+                if count == self.batchSize:
+                    self.serializer.write_with_length(items, stream)
+                    items = []
+                    count = 0
+            if items:
+                self.serializer.write_with_length(items, stream)
+
+    def read_from_file(self, stream):
+        for batch in self.serializer.read_from_file(stream):
+            for item in batch:
+                yield item
 
 
-def dump_pickle(obj):
-    return cPickle.dumps(obj, 2)
+class NoOpSerializer(Serializer):
+
+    @staticmethod
+    def dumps(obj):
+        return obj
+
+    @staticmethod
+    def loads(obj):
+        return obj
 
 
-load_pickle = cPickle.loads
+class PickleSerializer(Serializer):
+
+    @staticmethod
+    def dumps(obj):
+        return cPickle.dumps(obj, 2)
+
+    loads = cPickle.loads
+
+
+class MarshalSerializer(Serializer):
+
+    dumps = marshal.dumps
+
+    loads = marshal.loads
 
 
 def read_long(stream):
@@ -55,29 +129,3 @@ def read_int(stream):
 
 def write_int(value, stream):
     stream.write(struct.pack("!i", value))
-
-
-def write_with_length(obj, stream):
-    write_int(len(obj), stream)
-    stream.write(obj)
-
-
-def read_with_length(stream):
-    length = read_int(stream)
-    obj = stream.read(length)
-    if obj == "":
-        raise EOFError
-    return obj
-
-
-def read_from_pickle_file(stream):
-    try:
-        while True:
-            obj = load_pickle(read_with_length(stream))
-            if type(obj) == Batch:  # We don't care about inheritance
-                for item in obj.items:
-                    yield item
-            else:
-                yield obj
-    except EOFError:
-        return

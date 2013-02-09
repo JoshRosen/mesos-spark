@@ -10,8 +10,7 @@ from tempfile import NamedTemporaryFile
 from threading import Thread
 
 from pyspark import cloudpickle
-from pyspark.serializers import batched, Batch, dump_pickle, load_pickle, \
-    read_from_pickle_file
+from pyspark.serializers import NoOpSerializer
 from pyspark.join import python_join, python_left_outer_join, \
     python_right_outer_join, python_cogroup
 
@@ -268,7 +267,7 @@ class RDD(object):
         self.ctx._writeIteratorToPickleFile(iterator, tempFile.name)
         # Read the data into Python and deserialize it:
         with open(tempFile.name, 'rb') as tempFile:
-            for item in read_from_pickle_file(tempFile):
+            for item in self.ctx.serializer.read_from_file(tempFile):
                 yield item
         os.unlink(tempFile.name)
 
@@ -540,20 +539,21 @@ class RDD(object):
         # Transferring O(n) objects to Java is too expensive.  Instead, we'll
         # form the hash buckets in Python, transferring O(numSplits) objects
         # to Java.  Each object is a (splitNumber, [objects]) pair.
+        dumps = self.ctx.serializer.dumps
         def add_shuffle_key(split, iterator):
             buckets = defaultdict(list)
             for (k, v) in iterator:
                 buckets[partitionFunc(k) % numSplits].append((k, v))
             for (split, items) in buckets.iteritems():
                 yield str(split)
-                yield dump_pickle(Batch(items))
+                yield dumps(items)
         keyed = PipelinedRDD(self, add_shuffle_key)
         keyed._bypass_serializer = True
         pairRDD = self.ctx._jvm.PairwiseRDD(keyed._jrdd.rdd()).asJavaPairRDD()
         partitioner = self.ctx._jvm.PythonPartitioner(numSplits,
                                                      id(partitionFunc))
         jrdd = pairRDD.partitionBy(partitioner).values()
-        rdd = RDD(jrdd, self.ctx)
+        rdd = RDD(jrdd, self.ctx).flatMap(lambda x: x)
         # This is required so that id(partitionFunc) remains unique, even if
         # partitionFunc is a lambda:
         rdd._partitionFunc = partitionFunc
@@ -719,13 +719,11 @@ class PipelinedRDD(RDD):
         if self._jrdd_val:
             return self._jrdd_val
         func = self.func
-        if not self._bypass_serializer and self.ctx.batchSize != 1:
-            oldfunc = self.func
-            batchSize = self.ctx.batchSize
-            def batched_func(split, iterator):
-                return batched(oldfunc(split, iterator), batchSize)
-            func = batched_func
-        cmds = [func, self._bypass_serializer]
+        if self._bypass_serializer:
+            serializer = NoOpSerializer
+        else:
+            serializer = self.ctx.serializer
+        cmds = [func, serializer]
         pipe_command = ' '.join(b64enc(cloudpickle.dumps(f)) for f in cmds)
         broadcast_vars = ListConverter().convert(
             [x._jbroadcast for x in self.ctx._pickled_broadcast_vars],

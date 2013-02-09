@@ -9,7 +9,7 @@ from pyspark.accumulators import Accumulator
 from pyspark.broadcast import Broadcast
 from pyspark.files import SparkFiles
 from pyspark.java_gateway import launch_gateway
-from pyspark.serializers import dump_pickle, write_with_length, batched
+from pyspark.serializers import PickleSerializer, BatchedSerializer
 from pyspark.rdd import RDD
 
 from py4j.java_collections import ListConverter
@@ -31,7 +31,7 @@ class SparkContext(object):
     _lock = Lock()
 
     def __init__(self, master, jobName, sparkHome=None, pyFiles=None,
-        environment=None, batchSize=1024):
+        environment=None, batchSize=1024, serializer=PickleSerializer):
         """
         Create a new SparkContext.
 
@@ -47,6 +47,7 @@ class SparkContext(object):
         @param batchSize: The number of Python objects represented as a single
                Java object.  Set 1 to disable batching or -1 to use an
                unlimited batch size.
+        @param serializer: The C{Serializer} class used to serialize data.
         """
         with SparkContext._lock:
             if SparkContext._active_spark_context:
@@ -64,7 +65,11 @@ class SparkContext(object):
         self.jobName = jobName
         self.sparkHome = sparkHome or None # None becomes null in Py4J
         self.environment = environment or {}
-        self.batchSize = batchSize  # -1 represents a unlimited batch size
+        self._batchSize = batchSize  # -1 represents a unlimited batch size
+        if batchSize == 1:
+            self.serializer = serializer
+        else:
+            self.serializer = BatchedSerializer(serializer, batchSize)
 
         # Create the Java SparkContext through Py4J
         empty_string_array = self._gateway.new_array(self._jvm.String, 0)
@@ -130,10 +135,7 @@ class SparkContext(object):
         # because it sends O(n) Py4J commands.  As an alternative, serialized
         # objects are written to a file and loaded through textFile().
         tempFile = NamedTemporaryFile(delete=False, dir=self._temp_dir)
-        if self.batchSize != 1:
-            c = batched(c, self.batchSize)
-        for x in c:
-            write_with_length(dump_pickle(x), tempFile)
+        self.serializer.write_to_file(c, tempFile)
         tempFile.close()
         readRDDFromPickleFile = self._jvm.PythonRDD.readRDDFromPickleFile
         jrdd = readRDDFromPickleFile(self._jsc, tempFile.name, numSlices)
