@@ -10,7 +10,8 @@ from tempfile import NamedTemporaryFile
 from threading import Thread
 
 from pyspark import cloudpickle
-from pyspark.serializers import NoOpSerializer, InputOutputSerializer
+from pyspark.serializers import NoOpSerializer, InputOutputSerializer, \
+    PairSerializer, BatchedSerializer
 from pyspark.join import python_join, python_left_outer_join, \
     python_right_outer_join, python_cogroup
 
@@ -35,6 +36,14 @@ class RDD(object):
         self._partitionFunc = None
         self._input_serializer = self.ctx.serializer
         self._output_serializer = self.ctx.serializer
+
+
+    @property
+    def _serializer(self):
+        if self._input_serializer == self._output_serializer:
+            return self._input_serializer
+        else:
+            return InputOutputSerializer(self._input_serializer, self._output_serializer)
 
     @property
     def context(self):
@@ -205,28 +214,33 @@ class RDD(object):
         def func(iterator): yield list(iterator)
         return self.mapPartitions(func)
 
-    #def cartesian(self, other):
-        #"""
-        #Return the Cartesian product of this RDD and another one, that is, the
-        #RDD of all pairs of elements C{(a, b)} where C{a} is in C{self} and
-        #C{b} is in C{other}.
-#
-        #>>> rdd = sc.parallelize([1, 2])
-        #>>> sorted(rdd.cartesian(rdd).collect())
-        #[(1, 1), (1, 2), (2, 1), (2, 2)]
-        #"""
-        ## Due to batching, we can't use the Java cartesian method.
-        #java_cartesian = RDD(self._jrdd.cartesian(other._jrdd), self.ctx)
-        #def unpack_batches(pair):
-            #(x, y) = pair
-            #if type(x) == Batch or type(y) == Batch:
-                #xs = x.items if type(x) == Batch else [x]
-                #ys = y.items if type(y) == Batch else [y]
-                #for pair in product(xs, ys):
-                    #yield pair
-            #else:
-                #yield pair
-        #return java_cartesian.flatMap(unpack_batches)
+    def cartesian(self, other):
+        """
+        Return the Cartesian product of this RDD and another one, that is, the
+        RDD of all pairs of elements C{(a, b)} where C{a} is in C{self} and
+        C{b} is in C{other}.
+
+        >>> rdd = sc.parallelize([1, 2])
+        >>> sorted(rdd.cartesian(rdd).collect())
+        [(1, 1), (1, 2), (2, 1), (2, 2)]
+        """
+        # Due to batching, we can't use the Java cartesian method.
+        java_cartesian = RDD(self._jrdd.cartesian(other._jrdd), self.ctx)
+        java_cartesian._input_serializer = \
+            PairSerializer(self._serializer, other._serializer)
+
+        self_is_batched = isinstance(self._output_serializer, BatchedSerializer)
+        other_is_batched = isinstance(other._output_serializer, BatchedSerializer)
+        def unpack_batches(pair):
+            (x, y) = pair
+            xs = x if self_is_batched else [x]
+            ys = y if other_is_batched else [y]
+            for pair in product(xs, ys):
+                yield pair
+        if self_is_batched or other_is_batched:
+            return java_cartesian.flatMap(unpack_batches)
+        else:
+            return java_cartesian
 
     def groupBy(self, f, numSplits=None):
         """
@@ -269,8 +283,8 @@ class RDD(object):
         """
         Return a list that contains all of the elements in this RDD.
         """
-        picklesInJava = self._jrdd.collect().iterator()
-        return list(self._collect_iterator_through_file(picklesInJava))
+        serializedInJava = self._jrdd.collect().iterator()
+        return list(self._collect_iterator_through_file(serializedInJava))
 
     def _collect_iterator_through_file(self, iterator):
         # Transferring lots of data through Py4J can be slow because
@@ -279,9 +293,17 @@ class RDD(object):
         tempFile = NamedTemporaryFile(delete=False, dir=self.ctx._temp_dir)
         tempFile.close()
         self.ctx._writeToFile(iterator, tempFile.name)
+        if isinstance(self, PipelinedRDD):
+            # If we have performed Python transformations on a JavaRDD, then
+            # the result will have been serialized using this RDD's output
+            # serializer
+            serializer = self._output_serializer
+        else:
+            # We haven't performed any Python transformations on a JavaRDD:
+            serializer = self._input_serializer
         # Read the data into Python and deserialize it:
         with open(tempFile.name, 'rb') as tempFile:
-            for item in self.ctx.serializer.read_from_file(tempFile):
+            for item in serializer.read_from_file(tempFile):
                 yield item
         os.unlink(tempFile.name)
 
@@ -418,7 +440,7 @@ class RDD(object):
         def func(split, iterator):
             return (str(x).encode("utf-8") for x in iterator)
         keyed = PipelinedRDD(self, func)
-        keyed._output_serializer = NoOpSerializer
+        keyed._output_serializer = NoOpSerializer()
         keyed._jrdd.map(self.ctx._jvm.BytesToString()).saveAsTextFile(path)
 
     # Pair functions
@@ -565,7 +587,7 @@ class RDD(object):
                     items = [items]
                 yield dumps(items)
         keyed = PipelinedRDD(self, add_shuffle_key)
-        keyed._output_serializer = NoOpSerializer
+        keyed._output_serializer = NoOpSerializer()
         pairRDD = self.ctx._jvm.PairwiseRDD(keyed._jrdd.rdd()).asJavaPairRDD()
         partitioner = self.ctx._jvm.PythonPartitioner(numSplits,
                                                      id(partitionFunc))
@@ -736,12 +758,7 @@ class PipelinedRDD(RDD):
     def _jrdd(self):
         if self._jrdd_val:
             return self._jrdd_val
-        func = self.func
-        if self._input_serializer == self._output_serializer:
-            serializer = self._input_serializer
-        else:
-            serializer = InputOutputSerializer(self._input_serializer, self._output_serializer)
-        cmds = [func, serializer]
+        cmds = [self.func, self._serializer]
         pipe_command = ' '.join(b64enc(cloudpickle.dumps(f)) for f in cmds)
         broadcast_vars = ListConverter().convert(
             [x._jbroadcast for x in self.ctx._pickled_broadcast_vars],

@@ -8,46 +8,48 @@ __all__ = ["Serializer", "NoOpSerializer", "PickleSerializer",
            "MarshalSerializer"]
 
 
+class SpecialLengths(object):
+    END_OF_DATA_SECTION = -1
+    PYTHON_EXCEPTION_THROWN = -2
+
+
 class Serializer(object):
     """
     Base class for serializers.  Custom serializers should implement C{loads}
     and C{dumps}.
     """
 
-    @classmethod
-    def write_with_length(cls, obj, stream):
-        serialized = cls.dumps(obj)
+    def write_with_length(self, obj, stream):
+        serialized = self.dumps(obj)
         write_int(len(serialized), stream)
         stream.write(serialized)
 
-    @classmethod
-    def read_with_length(cls, stream):
+    def read_with_length(self, stream):
         length = read_int(stream)
         obj = stream.read(length)
         if obj == "":
             raise EOFError
-        return cls.loads(obj)
+        return self.loads(obj)
 
-    @classmethod
-    def read_from_file(cls, stream):
+    def read_from_file(self, stream):
         try:
             while True:
-                yield cls.read_with_length(stream)
+                yield self.read_with_length(stream)
         except EOFError:
             return
 
-    @classmethod
-    def write_to_file(cls, iterator, stream):
+    def write_to_file(self, iterator, stream):
         for obj in iterator:
-            cls.write_with_length(obj, stream)
+            self.write_with_length(obj, stream)
 
-    @staticmethod
-    def dumps(obj):
+    def dumps(self, obj):
         raise NotImplementedError
 
-    @staticmethod
-    def loads(obj):
+    def loads(self, obj):
         raise NotImplementedError
+
+    def __ne__(self, other):
+        return not self == other
 
 
 class InputOutputSerializer(Serializer):
@@ -67,9 +69,26 @@ class InputOutputSerializer(Serializer):
             other.input_serializer == self.input_serializer and \
             other.output_serializer == self.output_serializer
 
-    def __ne__(self, other):
-        return not self == other
 
+class PairSerializer(Serializer):
+
+    def __init__(self, key_ser, val_ser):
+        self.key_ser = key_ser
+        self.val_ser = val_ser
+
+    def write_with_length(self, pair, stream):
+        (key, val) = pair
+        self.key_ser.write_with_length(key, stream)
+        self.val_ser.write_with_length(val, stream)
+
+    def read_with_length(self, stream):
+        key = self.key_ser.read_with_length(stream)
+        val = self.val_ser.read_with_length(stream)
+        return (key, val)
+
+    def __eq__(self, other):
+        return isinstance(other, PairSerializer) and \
+            self.key_ser == other.key_ser and self.val_ser == other.val_ser
 
 
 class BatchedSerializer(Serializer):
@@ -111,25 +130,19 @@ class BatchedSerializer(Serializer):
         return isinstance(other, BatchedSerializer) and \
             other.serializer == self.serializer
 
-    def __ne__(self, other):
-        return not self == other
-
 
 class NoOpSerializer(Serializer):
 
-    @staticmethod
-    def dumps(obj):
+    def dumps(self, obj):
         return obj
 
-    @staticmethod
-    def loads(obj):
+    def loads(self, obj):
         return obj
 
 
 class PickleSerializer(Serializer):
 
-    @staticmethod
-    def dumps(obj):
+    def dumps(self, obj):
         return cPickle.dumps(obj, 2)
 
     loads = cPickle.loads

@@ -32,7 +32,7 @@ class SparkContext(object):
     _lock = Lock()
 
     def __init__(self, master, jobName, sparkHome=None, pyFiles=None,
-        environment=None, batchSize=1024, serializer=PickleSerializer):
+        environment=None, batchSize=1024, serializer=PickleSerializer()):
         """
         Create a new SparkContext.
 
@@ -138,8 +138,8 @@ class SparkContext(object):
         tempFile = NamedTemporaryFile(delete=False, dir=self._temp_dir)
         self.serializer.write_to_file(c, tempFile)
         tempFile.close()
-        readRDDFromPickleFile = self._jvm.PythonRDD.readRDDFromPickleFile
-        jrdd = readRDDFromPickleFile(self._jsc, tempFile.name, numSlices)
+        readRDDFromFile = self._jvm.PythonRDD.readRDDFromFile
+        jrdd = readRDDFromFile(self._jsc, tempFile.name, numSlices)
         return RDD(jrdd, self)
 
     def textFile(self, name, minSplits=None):
@@ -150,7 +150,7 @@ class SparkContext(object):
         """
         minSplits = minSplits or min(self.defaultParallelism, 2)
         rdd = RDD(self._jsc.textFile(name, minSplits), self)
-        rdd._input_serializer = NoOpSerializer
+        rdd._input_serializer = NoOpSerializer()
         return rdd
 
     def _checkpointFile(self, name):
@@ -172,7 +172,8 @@ class SparkContext(object):
         object for reading it in distributed functions. The variable will be
         sent to each cluster only once.
         """
-        pickled = PickleSerializer.dumps(value)
+        pickleSer = PickleSerializer()
+        pickled = pickleSer.dumps(value)
         jbroadcast = self._jsc.broadcast(bytearray(pickled))
         return Broadcast(jbroadcast.id(), value, jbroadcast,
                          self._pickled_broadcast_vars)

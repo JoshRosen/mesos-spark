@@ -108,13 +108,13 @@ private[spark] class PythonRDD[T: ClassManifest](
               val obj = new Array[Byte](length)
               stream.readFully(obj)
               obj
-            case -2 =>
+            case SpecialLengths.PYTHON_EXCEPTION_THROWN =>
               // Signals that an exception has been thrown in python
               val exLength = stream.readInt()
               val obj = new Array[Byte](exLength)
               stream.readFully(obj)
               throw new PythonException(new String(obj))
-            case -1 =>
+            case SpecialLengths.END_OF_DATA_SECTION =>
               // We've finished the data section of the output, but we can still read some
               // accumulator updates; let's do that, breaking when we get EOFException
               while (true) {
@@ -164,26 +164,19 @@ private class PairwiseRDD(prev: RDD[Array[Byte]]) extends
   val asJavaPairRDD : JavaPairRDD[Array[Byte], Array[Byte]] = JavaPairRDD.fromRDD(this)
 }
 
+private[spark] object SpecialLengths {
+  val END_OF_DATA_SECTION = -1
+  val PYTHON_EXCEPTION_THROWN = -2
+}
+
 private[spark] object PythonRDD {
 
-  /** Strips the pickle PROTO and STOP opcodes from the start and end of a pickle */
-  def stripPickle(arr: Array[Byte]) : Array[Byte] = {
-    arr.slice(2, arr.length - 1)
-  }
-
   /**
-   * Write strings, pickled Python objects, or pairs of pickled objects to a data output stream.
-   * The data format is a 32-bit integer representing the pickled object's length (in bytes),
-   * followed by the pickled data.
+   * Write strings, serialized Python objects, or pairs of serialized objects to a data output
+   * stream.
    *
-   * Pickle module:
-   *
-   *    http://docs.python.org/2/library/pickle.html
-   *
-   * The pickle protocol is documented in the source of the `pickle` and `pickletools` modules:
-   *
-   *    http://hg.python.org/cpython/file/2.6/Lib/pickle.py
-   *    http://hg.python.org/cpython/file/2.6/Lib/pickletools.py
+   * The data format is a 32-bit integer representing the object's length (in bytes), followed by
+   * the serialized data.
    *
    * @param elem the object to write
    * @param dOut a data output stream
@@ -193,16 +186,10 @@ private[spark] object PythonRDD {
       val arr = elem.asInstanceOf[Array[Byte]]
       dOut.writeInt(arr.length)
       dOut.write(arr)
-    /*} else if (elem.isInstanceOf[scala.Tuple2[Array[Byte], Array[Byte]]]) {
+    } else if (elem.isInstanceOf[scala.Tuple2[Array[Byte], Array[Byte]]]) {
       val t = elem.asInstanceOf[scala.Tuple2[Array[Byte], Array[Byte]]]
-      val length = t._1.length + t._2.length - 3 - 3 + 4  // stripPickle() removes 3 bytes
-      dOut.writeInt(length)
-      dOut.writeByte(Pickle.PROTO)
-      dOut.writeByte(Pickle.TWO)
-      dOut.write(PythonRDD.stripPickle(t._1))
-      dOut.write(PythonRDD.stripPickle(t._2))
-      dOut.writeByte(Pickle.TUPLE2)
-      dOut.writeByte(Pickle.STOP)  */
+      writeAsPickle(t._1, dOut)
+      writeAsPickle(t._2, dOut)
     } else if (elem.isInstanceOf[String]) {
       val s = elem.asInstanceOf[String].getBytes("UTF-8")
       dOut.writeInt(s.length)
@@ -213,7 +200,6 @@ private[spark] object PythonRDD {
   }
 
   def writeStringAsPickle(elem: String, dOut: DataOutputStream) {
-    // For uniformity, strings are wrapped into Pickles.
     val s = elem.getBytes("UTF-8")
     val length = 2 + 1 + 4 + s.length + 1
     dOut.writeInt(length)
@@ -225,7 +211,7 @@ private[spark] object PythonRDD {
     dOut.writeByte(Pickle.STOP)
   }
 
-  def readRDDFromPickleFile(sc: JavaSparkContext, filename: String, parallelism: Int) :
+  def readRDDFromFile(sc: JavaSparkContext, filename: String, parallelism: Int) :
   JavaRDD[Array[Byte]] = {
     val file = new DataInputStream(new FileInputStream(filename))
     val objs = new collection.mutable.ArrayBuffer[Array[Byte]]
@@ -262,6 +248,16 @@ private[spark] object PythonRDD {
   }
 }
 
+/**
+ * Pickle module:
+ *
+ *    http://docs.python.org/2/library/pickle.html
+ *
+ * The pickle protocol is documented in the source of the `pickle` and `pickletools` modules:
+ *
+ *    http://hg.python.org/cpython/file/2.6/Lib/pickle.py
+ *    http://hg.python.org/cpython/file/2.6/Lib/pickletools.py
+*/
 private object Pickle {
   val PROTO: Byte = 0x80.toByte
   val TWO: Byte = 0x02.toByte
