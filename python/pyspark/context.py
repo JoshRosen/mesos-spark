@@ -9,7 +9,8 @@ from pyspark.accumulators import Accumulator
 from pyspark.broadcast import Broadcast
 from pyspark.files import SparkFiles
 from pyspark.java_gateway import launch_gateway
-from pyspark.serializers import PickleSerializer, BatchedSerializer
+from pyspark.serializers import PickleSerializer, BatchedSerializer, \
+    NoOpSerializer
 from pyspark.rdd import RDD
 
 from py4j.java_collections import ListConverter
@@ -24,7 +25,7 @@ class SparkContext(object):
 
     _gateway = None
     _jvm = None
-    _writeIteratorToPickleFile = None
+    _writeToFile = None
     _takePartition = None
     _next_accum_id = 0
     _active_spark_context = None
@@ -57,8 +58,8 @@ class SparkContext(object):
                 if not SparkContext._gateway:
                     SparkContext._gateway = launch_gateway()
                     SparkContext._jvm = SparkContext._gateway.jvm
-                    SparkContext._writeIteratorToPickleFile = \
-                        SparkContext._jvm.PythonRDD.writeIteratorToPickleFile
+                    SparkContext._writeToFile = \
+                        SparkContext._jvm.PythonRDD.writeToFile
                     SparkContext._takePartition = \
                         SparkContext._jvm.PythonRDD.takePartition
         self.master = master
@@ -148,21 +149,22 @@ class SparkContext(object):
         RDD of Strings.
         """
         minSplits = minSplits or min(self.defaultParallelism, 2)
-        jrdd = self._jsc.textFile(name, minSplits)
-        return RDD(jrdd, self)
+        rdd = RDD(self._jsc.textFile(name, minSplits), self)
+        rdd._input_serializer = NoOpSerializer
+        return rdd
 
     def _checkpointFile(self, name):
         jrdd = self._jsc.checkpointFile(name)
         return RDD(jrdd, self)
 
-    def union(self, rdds):
-        """
-        Build the union of a list of RDDs.
-        """
-        first = rdds[0]._jrdd
-        rest = [x._jrdd for x in rdds[1:]]
-        rest = ListConverter().convert(rest, self.gateway._gateway_client)
-        return RDD(self._jsc.union(first, rest), self)
+    #def union(self, rdds):
+        #"""
+        #Build the union of a list of RDDs.
+        #"""
+        #first = rdds[0]._jrdd
+        #rest = [x._jrdd for x in rdds[1:]]
+        #rest = ListConverter().convert(rest, self.gateway._gateway_client)
+        #return RDD(self._jsc.union(first, rest), self)
 
     def broadcast(self, value):
         """
@@ -170,7 +172,8 @@ class SparkContext(object):
         object for reading it in distributed functions. The variable will be
         sent to each cluster only once.
         """
-        jbroadcast = self._jsc.broadcast(bytearray(dump_pickle(value)))
+        pickled = PickleSerializer.dumps(value)
+        jbroadcast = self._jsc.broadcast(bytearray(pickled))
         return Broadcast(jbroadcast.id(), value, jbroadcast,
                          self._pickled_broadcast_vars)
 

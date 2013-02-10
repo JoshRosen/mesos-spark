@@ -208,7 +208,7 @@ private[spark] object PythonRDD {
       dOut.writeInt(s.length)
       dOut.write(s)
     } else {
-      throw new Exception("Unexpected RDD type")
+      throw new Exception("Unexpected RDD type: " + elem.getClass)
     }
   }
 
@@ -243,12 +243,12 @@ private[spark] object PythonRDD {
     JavaRDD.fromRDD(sc.sc.parallelize(objs, parallelism))
   }
 
-  def writeIteratorToPickleFile[T](items: java.util.Iterator[T], filename: String) {
+  def writeToFile[T](items: java.util.Iterator[T], filename: String) {
     import scala.collection.JavaConverters._
-    writeIteratorToPickleFile(items.asScala, filename)
+    writeToFile(items.asScala, filename)
   }
 
-  def writeIteratorToPickleFile[T](items: Iterator[T], filename: String) {
+  def writeToFile[T](items: Iterator[T], filename: String) {
     val file = new DataOutputStream(new FileOutputStream(filename))
     for (item <- items) {
       writeAsPickle(item, file)

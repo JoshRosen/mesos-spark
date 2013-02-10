@@ -10,7 +10,7 @@ from tempfile import NamedTemporaryFile
 from threading import Thread
 
 from pyspark import cloudpickle
-from pyspark.serializers import NoOpSerializer
+from pyspark.serializers import NoOpSerializer, InputOutputSerializer
 from pyspark.join import python_join, python_left_outer_join, \
     python_right_outer_join, python_cogroup
 
@@ -33,6 +33,8 @@ class RDD(object):
         self.is_checkpointed = False
         self.ctx = ctx
         self._partitionFunc = None
+        self._input_serializer = self.ctx.serializer
+        self._output_serializer = self.ctx.serializer
 
     @property
     def context(self):
@@ -163,7 +165,19 @@ class RDD(object):
         >>> rdd.union(rdd).collect()
         [1, 1, 2, 3, 1, 1, 2, 3]
         """
-        return RDD(self._jrdd.union(other._jrdd), self.ctx)
+        if self._input_serializer == other._input_serializer:
+            rdd = RDD(self._jrdd.union(other._jrdd), self.ctx)
+            rdd._input_serializer = self._input_serializer
+            return rdd
+        else:
+            # These rdds contain data in different serialized formats, so we
+            # must normalize them to the default serializer.
+            self_copy = self.map(lambda x: x)
+            other_copy = other.map(lambda x: x)
+            self_copy._output_serializer = self.ctx.serializer
+            other_copy._output_serializer = self.ctx.serializer
+            return RDD(self_copy._jrdd.union(other_copy._jrdd), self.ctx)
+
 
     def __add__(self, other):
         """
@@ -191,28 +205,28 @@ class RDD(object):
         def func(iterator): yield list(iterator)
         return self.mapPartitions(func)
 
-    def cartesian(self, other):
-        """
-        Return the Cartesian product of this RDD and another one, that is, the
-        RDD of all pairs of elements C{(a, b)} where C{a} is in C{self} and
-        C{b} is in C{other}.
-
-        >>> rdd = sc.parallelize([1, 2])
-        >>> sorted(rdd.cartesian(rdd).collect())
-        [(1, 1), (1, 2), (2, 1), (2, 2)]
-        """
-        # Due to batching, we can't use the Java cartesian method.
-        java_cartesian = RDD(self._jrdd.cartesian(other._jrdd), self.ctx)
-        def unpack_batches(pair):
-            (x, y) = pair
-            if type(x) == Batch or type(y) == Batch:
-                xs = x.items if type(x) == Batch else [x]
-                ys = y.items if type(y) == Batch else [y]
-                for pair in product(xs, ys):
-                    yield pair
-            else:
-                yield pair
-        return java_cartesian.flatMap(unpack_batches)
+    #def cartesian(self, other):
+        #"""
+        #Return the Cartesian product of this RDD and another one, that is, the
+        #RDD of all pairs of elements C{(a, b)} where C{a} is in C{self} and
+        #C{b} is in C{other}.
+#
+        #>>> rdd = sc.parallelize([1, 2])
+        #>>> sorted(rdd.cartesian(rdd).collect())
+        #[(1, 1), (1, 2), (2, 1), (2, 2)]
+        #"""
+        ## Due to batching, we can't use the Java cartesian method.
+        #java_cartesian = RDD(self._jrdd.cartesian(other._jrdd), self.ctx)
+        #def unpack_batches(pair):
+            #(x, y) = pair
+            #if type(x) == Batch or type(y) == Batch:
+                #xs = x.items if type(x) == Batch else [x]
+                #ys = y.items if type(y) == Batch else [y]
+                #for pair in product(xs, ys):
+                    #yield pair
+            #else:
+                #yield pair
+        #return java_cartesian.flatMap(unpack_batches)
 
     def groupBy(self, f, numSplits=None):
         """
@@ -264,7 +278,7 @@ class RDD(object):
         # file and read it back.
         tempFile = NamedTemporaryFile(delete=False, dir=self.ctx._temp_dir)
         tempFile.close()
-        self.ctx._writeIteratorToPickleFile(iterator, tempFile.name)
+        self.ctx._writeToFile(iterator, tempFile.name)
         # Read the data into Python and deserialize it:
         with open(tempFile.name, 'rb') as tempFile:
             for item in self.ctx.serializer.read_from_file(tempFile):
@@ -404,7 +418,7 @@ class RDD(object):
         def func(split, iterator):
             return (str(x).encode("utf-8") for x in iterator)
         keyed = PipelinedRDD(self, func)
-        keyed._bypass_serializer = True
+        keyed._output_serializer = NoOpSerializer
         keyed._jrdd.map(self.ctx._jvm.BytesToString()).saveAsTextFile(path)
 
     # Pair functions
@@ -551,7 +565,7 @@ class RDD(object):
                     items = [items]
                 yield dumps(items)
         keyed = PipelinedRDD(self, add_shuffle_key)
-        keyed._bypass_serializer = True
+        keyed._output_serializer = NoOpSerializer
         pairRDD = self.ctx._jvm.PairwiseRDD(keyed._jrdd.rdd()).asJavaPairRDD()
         partitioner = self.ctx._jvm.PythonPartitioner(numSplits,
                                                      id(partitionFunc))
@@ -714,18 +728,19 @@ class PipelinedRDD(RDD):
         self.is_checkpointed = False
         self.ctx = prev.ctx
         self.prev = prev
+        self._input_serializer = prev._input_serializer
+        self._output_serializer = prev._output_serializer
         self._jrdd_val = None
-        self._bypass_serializer = False
 
     @property
     def _jrdd(self):
         if self._jrdd_val:
             return self._jrdd_val
         func = self.func
-        if self._bypass_serializer:
-            serializer = NoOpSerializer
+        if self._input_serializer == self._output_serializer:
+            serializer = self._input_serializer
         else:
-            serializer = self.ctx.serializer
+            serializer = InputOutputSerializer(self._input_serializer, self._output_serializer)
         cmds = [func, serializer]
         pipe_command = ' '.join(b64enc(cloudpickle.dumps(f)) for f in cmds)
         broadcast_vars = ListConverter().convert(

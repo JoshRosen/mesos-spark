@@ -3,6 +3,7 @@ from random import random
 from operator import add
 
 from pyspark import SparkContext
+from pyspark.serializers import MarshalSerializer
 
 
 if __name__ == "__main__":
@@ -10,7 +11,7 @@ if __name__ == "__main__":
         print >> sys.stderr, \
             "Usage: PythonPi <master> [<slices>]"
         exit(-1)
-    sc = SparkContext(sys.argv[1], "PythonPi")
+    sc = SparkContext(sys.argv[1], "PythonPi", serializer=MarshalSerializer)
     slices = int(sys.argv[2]) if len(sys.argv) > 2 else 2
     n = 100000 * slices
     def f(_):

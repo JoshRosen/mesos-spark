@@ -50,6 +50,28 @@ class Serializer(object):
         raise NotImplementedError
 
 
+class InputOutputSerializer(Serializer):
+
+    def __init__(self, input_serializer, output_serializer):
+        self.input_serializer = input_serializer
+        self.output_serializer = output_serializer
+        self.loads = input_serializer.loads
+        self.dumps = output_serializer.dumps
+        self.write_to_file = output_serializer.write_to_file
+        self.read_from_file = input_serializer.read_from_file
+        self.write_with_length = output_serializer.write_with_length
+        self.read_with_length = input_serializer.read_with_length
+
+    def __eq__(self, other):
+        return isinstance(other, InputOutputSerializer) and \
+            other.input_serializer == self.input_serializer and \
+            other.output_serializer == self.output_serializer
+
+    def __ne__(self, other):
+        return not self == other
+
+
+
 class BatchedSerializer(Serializer):
 
     def __init__(self, serializer, batchSize):
@@ -84,6 +106,13 @@ class BatchedSerializer(Serializer):
         for batch in self.serializer.read_from_file(stream):
             for item in batch:
                 yield item
+
+    def __eq__(self, other):
+        return isinstance(other, BatchedSerializer) and \
+            other.serializer == self.serializer
+
+    def __ne__(self, other):
+        return not self == other
 
 
 class NoOpSerializer(Serializer):

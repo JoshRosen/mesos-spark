@@ -49,7 +49,8 @@ def main():
         sys.exit(-1)
     # Mark the beginning of the accumulators section of the output
     write_int(-1, old_stdout)
-    PickleSerializer.write_to_file(_accumulatorRegistry.items(), old_stdout)
+    for aid, accum in _accumulatorRegistry.items():
+        PickleSerializer.write_with_length((aid, accum._value), old_stdout)
 
 
 if __name__ == '__main__':
