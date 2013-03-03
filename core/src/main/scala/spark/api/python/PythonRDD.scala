@@ -59,12 +59,19 @@ private[spark] class PythonRDD[T: ClassManifest](
       }
     }.start()
 
+    val in = Source.fromInputStream(proc.getInputStream)
+    val lines = in.getLines()
+    val workerHost = lines.next()
+    val workerPort = lines.next().toInt
+    in.close()
+    val workerSocket = new Socket(workerHost, workerPort)
+
     // Start a thread to feed the process input from our parent's iterator
-    new Thread("stdin writer for " + pythonExec) {
+    new Thread("socket writer for " + pythonExec) {
       override def run() {
         SparkEnv.set(env)
-        val out = new PrintWriter(proc.getOutputStream)
-        val dOut = new DataOutputStream(proc.getOutputStream)
+        val out = new PrintWriter(workerSocket.getOutputStream)
+        val dOut = new DataOutputStream(workerSocket.getOutputStream)
         // Partition index
         dOut.writeInt(split.index)
         // sparkFilesDir
@@ -86,14 +93,14 @@ private[spark] class PythonRDD[T: ClassManifest](
         for (elem <- parent.iterator(split, context)) {
           PythonRDD.writeAsPickle(elem, dOut)
         }
+        dOut.writeInt(-1)  // Indicate end-of-stream
         dOut.flush()
         out.flush()
-        proc.getOutputStream.close()
       }
     }.start()
 
     // Return an iterator that read lines from the process's stdout
-    val stream = new DataInputStream(proc.getInputStream)
+    val stream = new DataInputStream(workerSocket.getInputStream)
     return new Iterator[Array[Byte]] {
       def next(): Array[Byte] = {
         val obj = _nextObj
@@ -131,6 +138,7 @@ private[spark] class PythonRDD[T: ClassManifest](
             if (exitStatus != 0) {
               throw new Exception("Subprocess exited with status " + exitStatus)
             }
+            workerSocket.close()
             new Array[Byte](0)
           }
           case e => throw e

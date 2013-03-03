@@ -64,6 +64,8 @@ def write_with_length(obj, stream):
 
 def read_with_length(stream):
     length = read_int(stream)
+    if length == -1:
+        raise EOFError
     obj = stream.read(length)
     if obj == "":
         raise EOFError
