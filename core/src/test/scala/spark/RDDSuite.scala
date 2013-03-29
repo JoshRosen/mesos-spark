@@ -4,6 +4,8 @@ import scala.collection.mutable.HashMap
 import org.scalatest.FunSuite
 import spark.SparkContext._
 import spark.rdd.{CoalescedRDD, CoGroupedRDD, PartitionPruningRDD}
+import scala.util.Random
+import storage.StorageLevel
 
 class RDDSuite extends FunSuite with LocalSparkContext {
 
@@ -184,6 +186,39 @@ class RDDSuite extends FunSuite with LocalSparkContext {
     assert(coalesced4.collect().toList === (1 to 10).toList)
     assert(coalesced4.glom().collect().map(_.toList).toList ===
       (1 to 10).map(x => List(x)).toList)
+  }
+
+  test("split RDDs") {
+    sc = new SparkContext("local", "test")
+
+    val data = sc.parallelize(1 to 10000, 50)
+    val splitData = data.split(10)
+
+    // Basic correctness tests:
+    assert(splitData.length === 10)
+    for (split <- splitData) {
+      assert(split.partitions.length === 5)
+    }
+    assert(data.collect().sorted === sc.union(splitData).collect().sorted)
+    assert(data.reduce(_ + _) === splitData.map(_.reduce(_ + _)).sum)
+
+    // Having too few partitions should still do something sensible:
+    val tooFewPartitions = data.split(100)
+    assert(tooFewPartitions.length === 50)
+
+    // Example of random hash-repartitioning before splitting:
+    val randSeeds = Array.tabulate(data.partitions.length)(_ => Random.nextInt())
+    val hashRepartitioned = data.mapPartitionsWithIndex ({ case (idx, iterator) =>
+      val rand = new Random(randSeeds(idx))
+      iterator.map((rand.nextInt(), _))
+    }).partitionBy(new HashPartitioner(500)).values
+    // Re-shuffling the entire data set will be expensive compared to
+    // reading blocks from disk, so it probably makes sense to spill
+    // to disk when necessary:
+    hashRepartitioned.persist(StorageLevel.MEMORY_AND_DISK)
+    val hashRepartitionedAndSplit = hashRepartitioned.split(100)
+    assert(hashRepartitionedAndSplit.length === 100)
+    assert(data.reduce(_ + _) === hashRepartitionedAndSplit.map(_.reduce(_ + _)).sum)
   }
 
   test("zipped RDDs") {

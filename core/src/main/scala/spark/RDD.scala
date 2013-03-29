@@ -31,6 +31,7 @@ import spark.rdd.MapPartitionsRDD
 import spark.rdd.MapPartitionsWithIndexRDD
 import spark.rdd.PipedRDD
 import spark.rdd.SampledRDD
+import spark.rdd.SplitRDD
 import spark.rdd.SubtractedRDD
 import spark.rdd.UnionRDD
 import spark.rdd.ZippedRDD
@@ -238,6 +239,27 @@ abstract class RDD[T: ClassManifest](
    * Return a new RDD that is reduced into `numPartitions` partitions.
    */
   def coalesce(numPartitions: Int): RDD[T] = new CoalescedRDD(this, numPartitions)
+
+  /**
+   * Return a set of RDDs, each of which corresponds to a disjoint subset
+   * of this RDD's partitions.
+   *
+   * The partitions are divided among the RDDs using a range-partitioning scheme;
+   * the last RDD may have fewer partitions if this RDD does not have a multiple
+   * of `numRDDs` partitions.  If this is undesirable, you can randomly
+   * hash-repartition this RDD prior to performing the  `split()`.
+   */
+  def split(numRDDs: Int): Array[RDD[T]] = {
+    if (partitions.length < numRDDs) {
+      partitions.map(part => new SplitRDD(this, Array(part.index)))
+    } else {
+      (0 until numRDDs).map { i =>
+        val rangeStart = ((i.toLong * partitions.length) / numRDDs).toInt
+        val rangeEnd = (((i.toLong + 1) * partitions.length) / numRDDs).toInt
+        new SplitRDD(this, (rangeStart until rangeEnd).toArray)
+      }.toArray
+    }
+  }
 
   /**
    * Return a sampled subset of this RDD.
