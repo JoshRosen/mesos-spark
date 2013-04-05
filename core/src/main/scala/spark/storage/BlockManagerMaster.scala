@@ -23,6 +23,7 @@ private[spark] class BlockManagerMaster(var driverActor: ActorRef) extends Loggi
   val DRIVER_AKKA_ACTOR_NAME = "BlockManagerMaster"
 
   val timeout = 10.seconds
+  var registrationNumber = -1
 
   /** Remove a dead executor from the driver actor. This is only called on the driver side. */
   def removeExecutor(execId: String) {
@@ -43,7 +44,13 @@ private[spark] class BlockManagerMaster(var driverActor: ActorRef) extends Loggi
   def registerBlockManager(
       blockManagerId: BlockManagerId, maxMemSize: Long, slaveActor: ActorRef) {
     logInfo("Trying to register BlockManager")
-    tell(RegisterBlockManager(blockManagerId, maxMemSize, slaveActor))
+    val registrationMessage = RegisterBlockManager(blockManagerId, maxMemSize, slaveActor)
+    val newRegistrationNumber = askDriverWithReply[Int](registrationMessage)
+    if (newRegistrationNumber < 0) {
+      throw new SparkException("BlockManagerMasterActor returned negative registration number")
+    } else if (registrationNumber == -1) {
+        registrationNumber = newRegistrationNumber
+    }
     logInfo("Registered BlockManager")
   }
 
@@ -85,6 +92,10 @@ private[spark] class BlockManagerMaster(var driverActor: ActorRef) extends Loggi
    */
   def removeBlock(blockId: String) {
     askDriverWithReply(RemoveBlock(blockId))
+  }
+
+  def removeShuffleBlocks() {
+    askDriverWithReply(RemoveShuffleBlocks())
   }
 
   /**

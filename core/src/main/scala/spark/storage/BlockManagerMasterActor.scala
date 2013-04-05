@@ -29,6 +29,9 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
   // Mapping from block id to the set of block managers that have the block.
   private val blockLocations = new JHashMap[String, Pair[Int, HashSet[BlockManagerId]]]
 
+  // Used to number block managers in the order that they register:
+  private var nextRegistrationNumber: Int = 1
+
   initLogging()
 
   val slaveTimeout = System.getProperty("spark.storage.blockManagerSlaveTimeoutMs",
@@ -72,6 +75,9 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
 
     case RemoveBlock(blockId) =>
       removeBlock(blockId)
+
+    case RemoveShuffleBlocks() =>
+      removeShuffleBlocks()
 
     case RemoveExecutor(execId) =>
       removeExecutor(execId)
@@ -165,6 +171,13 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
     sender ! true
   }
 
+  private def removeShuffleBlocks() {
+    for (slaveActor <- blockManagerInfo.values.map(_.slaveActor)) {
+      slaveActor ! RemoveShuffleBlocks()
+    }
+    sender ! true
+  }
+
   // Return a map from the block manager id to max memory and remaining memory.
   private def getMemoryStatus() {
     val res = blockManagerInfo.map { case(blockManagerId, info) =>
@@ -184,6 +197,7 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
   private def register(id: BlockManagerId, maxMemSize: Long, slaveActor: ActorRef) {
     if (id.executorId == "<driver>" && !isLocal) {
       // Got a register message from the master node; don't register it
+      sender ! 0
     } else if (!blockManagerInfo.contains(id)) {
       blockManagerIdByExecutor.get(id.executorId) match {
         case Some(manager) =>
@@ -195,8 +209,10 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
       }
       blockManagerInfo(id) = new BlockManagerMasterActor.BlockManagerInfo(
         id, System.currentTimeMillis(), maxMemSize, slaveActor)
+      val registrationNumber = nextRegistrationNumber
+      nextRegistrationNumber += 1
+      sender ! registrationNumber
     }
-    sender ! true
   }
 
   private def updateBlockInfo(

@@ -139,13 +139,14 @@ private[spark] class ShuffleMapTask(
         val blockId = "shuffle_" + dep.shuffleId + "_" + partition + "_" + i
         // Get a Scala iterator from Java map
         val iter: Iterator[(Any, Any)] = buckets(i).iterator
-        val size = blockManager.put(blockId, iter, StorageLevel.DISK_ONLY, false)
+        val size = blockManager.put(blockId, iter, StorageLevel.MEMORY_ONLY_SER, false)
         totalBytes += size
         compressedSizes(i) = MapOutputTracker.compressSize(size)
       }
       val shuffleMetrics = new ShuffleWriteMetrics
       shuffleMetrics.shuffleBytesWritten = totalBytes
       metrics.get.shuffleWriteMetrics = Some(shuffleMetrics)
+      SparkEnv.get.blockManager.updateShuffleBlocks(dep.shuffleId, numOutputSplits, partition)
 
       return new MapStatus(blockManager.blockManagerId, compressedSizes)
     } finally {

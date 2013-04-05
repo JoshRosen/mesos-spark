@@ -17,6 +17,11 @@ private[spark]
 case class RemoveBlock(blockId: String) extends ToBlockManagerSlave
 
 
+// Remove shuffle blocks from all slaves.
+private[spark]
+case class RemoveShuffleBlocks() extends ToBlockManagerSlave
+
+
 //////////////////////////////////////////////////////////////////////////////////
 // Messages from slaves to the master.
 //////////////////////////////////////////////////////////////////////////////////

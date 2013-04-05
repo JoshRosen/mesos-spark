@@ -76,6 +76,8 @@ class BlockManager(
   }
 
   private val blockInfo = new TimeStampedHashMap[String, BlockInfo]
+  // mapping from shuffle id to (numMapOutputSplits, ids of ShuffleMapTasks that ran here)
+  private val shuffleBlocks = new java.util.HashMap[Int, (Int, ArrayBuffer[Int])]
 
   private[storage] val memoryStore: BlockStore = new MemoryStore(this, maxMemory)
   private[storage] val diskStore: BlockStore =
@@ -280,14 +282,14 @@ class BlockManager(
 
     // As an optimization for map output fetches, if the block is for a shuffle, return it
     // without acquiring a lock; the disk store never deletes (recent) items so this should work
-    if (blockId.startsWith("shuffle_")) {
-      return diskStore.getValues(blockId) match {
-        case Some(iterator) =>
-          Some(iterator)
-        case None =>
-          throw new Exception("Block " + blockId + " not found on disk, though it should be")
-      }
-    }
+    // if (blockId.startsWith("shuffle_")) {
+    //  return diskStore.getValues(blockId) match {
+    //    case Some(iterator) =>
+    //      Some(iterator)
+    //    case None =>
+    //      throw new Exception("Block " + blockId + " not found on disk, though it should be")
+    //  }
+    // }
 
     val info = blockInfo.get(blockId).orNull
     if (info != null) {
@@ -372,14 +374,14 @@ class BlockManager(
 
     // As an optimization for map output fetches, if the block is for a shuffle, return it
     // without acquiring a lock; the disk store never deletes (recent) items so this should work
-    if (blockId.startsWith("shuffle_")) {
-      return diskStore.getBytes(blockId) match {
-        case Some(bytes) =>
-          Some(bytes)
-        case None =>
-          throw new Exception("Block " + blockId + " not found on disk, though it should be")
-      }
-    }
+    // if (blockId.startsWith("shuffle_")) {
+    //  return diskStore.getBytes(blockId) match {
+    //    case Some(bytes) =>
+    //      Some(bytes)
+    //    case None =>
+    //      throw new Exception("Block " + blockId + " not found on disk, though it should be")
+    //  }
+    //}
 
     val info = blockInfo.get(blockId).orNull
     if (info != null) {
@@ -846,6 +848,37 @@ class BlockManager(
     bytes.rewind()
     val stream = wrapForCompression(blockId, new ByteBufferInputStream(bytes, true))
     serializer.newInstance().deserializeStream(stream).asIterator
+  }
+
+  def removeShuffleBlocks() {
+    shuffleBlocks.synchronized {
+      shuffleBlocks.foreach { case(shuffleId, info) =>
+        val numMapOutputs: Int = info._1
+        val mapIds: ArrayBuffer[Int] = info._2
+
+        var i = 0
+        while (i < mapIds.size) {
+          var j = 0
+          while (j < numMapOutputs) {
+            removeBlock("shuffle_" + shuffleId + "_" + mapIds(i) + "_" + j)
+            j += 1
+          }
+          i += 1
+        }
+      }
+      shuffleBlocks.clear()
+    }
+  }
+
+  def updateShuffleBlocks(shuffleId: Int, numMapSplits: Int, mapId: Int) {
+    shuffleBlocks.synchronized {
+      var status = shuffleBlocks.get(shuffleId)
+      if (status == null) {
+        shuffleBlocks.put(shuffleId, (numMapSplits, ArrayBuffer[Int](mapId)))
+      } else {
+        status._2 += mapId
+      }
+    }
   }
 
   def stop() {

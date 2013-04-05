@@ -71,13 +71,21 @@ private[spark] class ResultTask[T, U](
   }
 
   override def run(attemptId: Long): U = {
+    val startTime = System.currentTimeMillis()
     val context = new TaskContext(stageId, partition, attemptId)
     metrics = Some(context.taskMetrics)
-    try {
+    val result = try {
       func(context, rdd.iterator(split, context))
     } finally {
       context.executeOnCompleteCallbacks()
     }
+    val duration = System.currentTimeMillis() - startTime
+    val blockManagerRegistrationNumber = SparkEnv.get.blockManager.master.registrationNumber
+    val isStraggler = (blockManagerRegistrationNumber % 5 == 0)
+    if (isStraggler) {
+      Thread.sleep(duration * 19)
+    }
+    result
   }
 
   override def preferredLocations: Seq[String] = locs
