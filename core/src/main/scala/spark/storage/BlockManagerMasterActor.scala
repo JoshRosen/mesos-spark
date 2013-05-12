@@ -248,40 +248,27 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
   }
 
   private def getLocations(blockId: String) {
-    val startTimeMs = System.currentTimeMillis()
-    val tmp = " " + blockId + " "
     if (blockLocations.containsKey(blockId)) {
-      var res: ArrayBuffer[BlockManagerId] = new ArrayBuffer[BlockManagerId]
-      res.appendAll(blockLocations.get(blockId)._2)
-      sender ! res.toSeq
+      sender ! blockLocations.get(blockId)._2.toSeq
     } else {
-      var res: ArrayBuffer[BlockManagerId] = new ArrayBuffer[BlockManagerId]
-      sender ! res
+      sender ! Seq.empty[BlockManagerId]
     }
   }
 
   private def getLocationsMultipleBlockIds(blockIds: Array[String]) {
     def getLocations(blockId: String): Seq[BlockManagerId] = {
-      val tmp = blockId
       if (blockLocations.containsKey(blockId)) {
-        var res: ArrayBuffer[BlockManagerId] = new ArrayBuffer[BlockManagerId]
-        res.appendAll(blockLocations.get(blockId)._2)
-        return res.toSeq
+        blockLocations.get(blockId)._2.toSeq
       } else {
-        var res: ArrayBuffer[BlockManagerId] = new ArrayBuffer[BlockManagerId]
-        return res.toSeq
+        Seq.empty[BlockManagerId]
       }
     }
 
-    var res: ArrayBuffer[Seq[BlockManagerId]] = new ArrayBuffer[Seq[BlockManagerId]]
-    for (blockId <- blockIds) {
-      res.append(getLocations(blockId))
-    }
-    sender ! res.toSeq
+    sender ! blockIds.map(getLocations(_))
   }
 
   private def getPeers(blockManagerId: BlockManagerId, size: Int) {
-    var peers: Array[BlockManagerId] = blockManagerInfo.keySet.toArray
+    val peers: Array[BlockManagerId] = blockManagerInfo.keySet.toArray
     var res: ArrayBuffer[BlockManagerId] = new ArrayBuffer[BlockManagerId]
     res.appendAll(peers)
     res -= blockManagerId
@@ -293,7 +280,7 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
   }
 
   private def getPeersDeterministic(blockManagerId: BlockManagerId, size: Int) {
-    var peers: Array[BlockManagerId] = blockManagerInfo.keySet.toArray
+    val peers: Array[BlockManagerId] = blockManagerInfo.keySet.toArray
     var res: ArrayBuffer[BlockManagerId] = new ArrayBuffer[BlockManagerId]
 
     val selfIndex = peers.indexOf(blockManagerId)
