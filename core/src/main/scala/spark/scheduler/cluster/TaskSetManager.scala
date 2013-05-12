@@ -453,7 +453,18 @@ private[spark] class TaskSetManager(sched: ClusterScheduler, val taskSet: TaskSe
       logInfo("Finished TID %s in %d ms (progress: %d/%d)".format(
         tid, info.duration, tasksFinished, numTasks))
       // Deserialize task result and pass it to the scheduler
-      val result = ser.deserialize[TaskResult[_]](serializedData, getClass.getClassLoader)
+      val result = ser.deserialize[TaskResult[_]](serializedData, getClass.getClassLoader) match {
+        case directResult: DirectTaskResult[_] => directResult
+        case IndirectTaskResult(blockId) => {
+          logDebug("Fetching indirect task result for TID %s".format(tid))
+          val serializedTaskResult = SparkEnv.get.blockManager.getLocalBytes(blockId)
+          assert(serializedTaskResult.isDefined,
+            "Expected result for TID %s was not found in BlockManager".format(tid))
+          val deserializedResult = ser.deserialize[DirectTaskResult[_]](serializedTaskResult.get)
+          SparkEnv.get.blockManager.removeBlock(blockId)
+          deserializedResult
+        }
+      }
       result.metrics.resultSize = serializedData.limit()
       sched.listener.taskEnded(tasks(index), Success, result.value, result.accumUpdates, info, result.metrics)
       // Mark finished and stop if we've finished all the tasks

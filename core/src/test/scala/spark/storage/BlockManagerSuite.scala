@@ -133,6 +133,8 @@ class BlockManagerSuite extends FunSuite with BeforeAndAfter with PrivateMethodT
     assert(master.getLocations("a1").size > 0, "master was not told about a1")
     assert(master.getLocations("a2").size > 0, "master was not told about a2")
     assert(master.getLocations("a3").size === 0, "master was told about a3")
+    assert(master.getLocations(Seq("a1", "a2").toArray) ===
+      Seq(master.getLocations("a1"), master.getLocations("a2")))
 
     // Drop a1 and a2 from memory; this should be reported back to the master
     store.dropFromMemory("a1", null)

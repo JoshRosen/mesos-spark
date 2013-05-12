@@ -12,6 +12,7 @@ import spark.broadcast._
 import spark.scheduler._
 import spark._
 import java.nio.ByteBuffer
+import spark.storage.StorageLevel
 
 /**
  * The Mesos executor for Spark.
@@ -111,9 +112,25 @@ private[spark] class Executor(executorId: String, slaveHostname: String, propert
         // we need to serialize the task metrics first.  If TaskMetrics had a custom serialized format, we could
         // just change the relevants bytes in the byte buffer
         val accumUpdates = Accumulators.values
-        val result = new TaskResult(value, accumUpdates, task.metrics.getOrElse(null))
-        val serializedResult = ser.serialize(result)
-        logInfo("Serialized size of result for " + taskId + " is " + serializedResult.limit)
+        val directResult = new DirectTaskResult(value, accumUpdates, task.metrics.getOrElse(null))
+        val serializedDirectResult = ser.serialize(directResult)
+        logInfo("Serialized size of result for " + taskId + " is " + serializedDirectResult.limit)
+        val serializedResult = if (serializedDirectResult.limit >= (akkaFrameSize - 1024)) {
+          // If the result is large, store it in the driver's BlockManager and return its blockId
+          // to the driver.  This "push-based" approach is motivated by a desire to not
+          // introduce new task failure modes: if the driver was responsible for pulling TaskResults
+          // from workers' block mangers, then we would have to handle the case where the TaskResult
+          // is evicted from the worker's BlockManager before it's fetched by the driver.  This
+          // would require extra bookkeeping and logic to force the task to be recomputed.
+          logDebug("Sending result for " + taskId + " through driver's BlockManager")
+          val blockId = "taskresult_" + taskId
+          env.blockManager.putBytesToDriver(blockId, serializedDirectResult,
+            StorageLevel.MEMORY_AND_DISK_SER)
+          ser.serialize(new IndirectTaskResult[Any](blockId))
+        } else {
+          logDebug("Sending result for " + taskId + " directly to driver")
+          serializedDirectResult
+        }
         if (serializedResult.limit >= (akkaFrameSize - 1024)) {
           throw new SparkException("Result for " + taskId + " exceeded Akka frame size")
         }

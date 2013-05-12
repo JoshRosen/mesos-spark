@@ -259,7 +259,7 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
       }
     }
 
-    sender ! blockIds.map(getLocations(_))
+    sender ! blockIds.map(getLocations(_)).toSeq
   }
 
   private def getPeers(blockManagerId: BlockManagerId, size: Int) {
