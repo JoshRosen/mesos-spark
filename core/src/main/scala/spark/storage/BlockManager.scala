@@ -741,6 +741,15 @@ class BlockManager(
     }
   }
 
+  private lazy val driverBlockManager: BlockManagerId = master.getDriverBlockManagerId
+  def putBytesToDriver(blockId: String, bytes: ByteBuffer, level: StorageLevel) {
+    val tLevel = StorageLevel(level.useDisk, level.useMemory, level.deserialized, 1)
+    if (!BlockManagerWorker.syncPutBlock(PutBlock(blockId, bytes, tLevel),
+      new ConnectionManagerId(driverBlockManager.host, driverBlockManager.port))) {
+      logError("Failed to call syncPutBlock to driver " + driverBlockManager)
+    }
+  }
+
   /**
    * Replicate block to another node.
    */

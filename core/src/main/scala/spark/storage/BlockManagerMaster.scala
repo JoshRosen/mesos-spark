@@ -80,6 +80,11 @@ private[spark] class BlockManagerMaster(var driverActor: ActorRef) extends Loggi
     result
   }
 
+  /** Get the id of the driver's BlockManager */
+  def getDriverBlockManagerId: BlockManagerId = {
+    askDriverWithReply[BlockManagerId](GetDriverBlockManagerId)
+  }
+
   /**
    * Remove a block from the slaves that have it. This can only be used to remove
    * blocks that the driver knows about.

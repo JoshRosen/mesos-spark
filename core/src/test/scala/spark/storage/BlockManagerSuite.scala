@@ -635,4 +635,13 @@ class BlockManagerSuite extends FunSuite with BeforeAndAfter with PrivateMethodT
       assert(store.getSingle("a1") == None, "a1 should not be in store")
     }
   }
+
+  test("storing bytes in driver block manager") {
+    store = new BlockManager("<driver>", actorSystem, master, serializer, 1200)
+    store2 = new BlockManager("worker", actorSystem, master, new KryoSerializer, 2000)
+
+    assert(store2.master.getDriverBlockManagerId === store.blockManagerId)
+    store2.putBytesToDriver("my_block", ByteBuffer.allocate(100), StorageLevel.MEMORY_AND_DISK)
+    assert(store.getLocalBytes("my_block").isDefined)
+  }
 }

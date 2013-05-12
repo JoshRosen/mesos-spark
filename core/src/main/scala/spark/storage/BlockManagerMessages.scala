@@ -88,6 +88,9 @@ private[spark]
 case class GetPeers(blockManagerId: BlockManagerId, size: Int) extends ToBlockManagerMaster
 
 private[spark]
+case object GetDriverBlockManagerId extends ToBlockManagerMaster
+
+private[spark]
 case class RemoveExecutor(execId: String) extends ToBlockManagerMaster
 
 private[spark]

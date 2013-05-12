@@ -64,11 +64,14 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
       getPeersDeterministic(blockManagerId, size)
       /*getPeers(blockManagerId, size)*/
 
+    case GetDriverBlockManagerId =>
+      getDriverBlockManagerId()
+
     case GetMemoryStatus =>
-      getMemoryStatus
+      getMemoryStatus()
 
     case GetStorageStatus =>
-      getStorageStatus
+      getStorageStatus()
 
     case RemoveBlock(blockId) =>
       removeBlock(blockId)
@@ -183,9 +186,7 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
   }
 
   private def register(id: BlockManagerId, maxMemSize: Long, slaveActor: ActorRef) {
-    if (id.executorId == "<driver>" && !isLocal) {
-      // Got a register message from the master node; don't register it
-    } else if (!blockManagerInfo.contains(id)) {
+    if (!blockManagerInfo.contains(id)) {
       blockManagerIdByExecutor.get(id.executorId) match {
         case Some(manager) =>
           // A block manager of the same host name already exists
@@ -208,13 +209,7 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
       diskSize: Long) {
 
     if (!blockManagerInfo.contains(blockManagerId)) {
-      if (blockManagerId.executorId == "<driver>" && !isLocal) {
-        // We intentionally do not register the master (except in local mode),
-        // so we should not indicate failure.
-        sender ! true
-      } else {
-        sender ! false
-      }
+      sender ! false
       return
     }
 
@@ -268,19 +263,14 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
   }
 
   private def getPeers(blockManagerId: BlockManagerId, size: Int) {
-    val peers: Array[BlockManagerId] = blockManagerInfo.keySet.toArray
-    var res: ArrayBuffer[BlockManagerId] = new ArrayBuffer[BlockManagerId]
-    res.appendAll(peers)
-    res -= blockManagerId
+    val peers = blockManagerInfo.keySet.filter(_ != blockManagerId).filter(_.executorId != "<driver>")
     val rand = new Random(System.currentTimeMillis())
-    while (res.length > size) {
-      res.remove(rand.nextInt(res.length))
-    }
-    sender ! res.toSeq
+    val res = rand.shuffle(peers).take(size).toSeq
+    sender ! res
   }
 
   private def getPeersDeterministic(blockManagerId: BlockManagerId, size: Int) {
-    val peers: Array[BlockManagerId] = blockManagerInfo.keySet.toArray
+    val peers = blockManagerInfo.keySet.filter(_.executorId != "<driver>").toArray
     var res: ArrayBuffer[BlockManagerId] = new ArrayBuffer[BlockManagerId]
 
     val selfIndex = peers.indexOf(blockManagerId)
@@ -298,6 +288,12 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
       res += peers(index % peers.size)
     }
     sender ! res.toSeq
+  }
+
+  private def getDriverBlockManagerId() {
+    val blockManagerId = blockManagerIdByExecutor.get("<driver>")
+    assert(blockManagerId.isDefined, "Could not find BlockManagerId for driver")
+    sender ! blockManagerId.get
   }
 }
 
