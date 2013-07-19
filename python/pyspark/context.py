@@ -122,6 +122,13 @@ class SparkContext(object):
         """
         return self._jsc.sc().defaultParallelism()
 
+    @property
+    def defaultMinSplits(self):
+        """
+        Default min number of partitions for Hadoop RDDs when not given by user
+        """
+        return self._jsc.sc().defaultMinSplits()
+
     def __del__(self):
         self.stop()
 
@@ -162,7 +169,7 @@ class SparkContext(object):
         nodes), or any Hadoop-supported file system URI, and return it as an
         RDD of Strings.
         """
-        minSplits = minSplits or min(self.defaultParallelism, 2)
+        minSplits = minSplits or self.defaultMinSplits
         jrdd = self._jsc.textFile(name, minSplits)
         return RDD(jrdd, self)
 

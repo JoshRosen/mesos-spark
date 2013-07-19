@@ -772,7 +772,7 @@ class SparkContext(
   def defaultParallelism: Int = taskScheduler.defaultParallelism
 
   /** Default min number of partitions for Hadoop RDDs when not given by user */
-  def defaultMinSplits: Int = math.min(defaultParallelism, 2)
+  def defaultMinSplits: Int = math.max(defaultParallelism, 2)
 
   private var nextShuffleId = new AtomicInteger(0)
 
