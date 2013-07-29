@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import itertools
 import os
 import shutil
 import sys
@@ -148,7 +149,22 @@ class SparkContext(object):
         # objects are written to a file and loaded through textFile().
         tempFile = NamedTemporaryFile(delete=False, dir=self._temp_dir)
         if self.batchSize != 1:
-            c = batched(c, self.batchSize)
+            if hasattr(c, '__len__'):  # e.g. a list or tuple, not a generator
+                # Group the input into numSlices groups, then batch each
+                # group to try to get numSlices non-empty partitions when
+                # fewer than numSlices * batchSize items are parallelized:
+                def group(c):
+                    length = len(c)
+                    for i in range(numSlices):
+                        start = (i * length) / numSlices
+                        end = ((i + 1) * length) / numSlices
+                        yield c[start:end]
+                groups = group(c)  # [[items ... ]]
+                batched_groups = (batched(g, self.batchSize) for g in groups)
+                batches = itertools.chain(*batched_groups)
+                c = batches
+            else:
+                c = batched(c, self.batchSize)
         for x in c:
             write_with_length(dump_pickle(x), tempFile)
         tempFile.close()
@@ -270,7 +286,7 @@ def _test():
     import doctest
     import tempfile
     globs = globals().copy()
-    globs['sc'] = SparkContext('local[4]', 'PythonTest', batchSize=2)
+    globs['sc'] = SparkContext('local[4]', 'PythonTest')
     globs['tempdir'] = tempfile.mkdtemp()
     atexit.register(lambda: shutil.rmtree(globs['tempdir']))
     (failure_count, test_count) = doctest.testmod(globs=globs)

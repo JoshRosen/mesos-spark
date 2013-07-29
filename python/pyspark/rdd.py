@@ -766,9 +766,7 @@ def _test():
     import doctest
     from pyspark.context import SparkContext
     globs = globals().copy()
-    # The small batch size here ensures that we see multiple batches,
-    # even in these small test examples:
-    globs['sc'] = SparkContext('local[4]', 'PythonTest', batchSize=2)
+    globs['sc'] = SparkContext('local[4]', 'PythonTest')
     (failure_count, test_count) = doctest.testmod(globs=globs)
     globs['sc'].stop()
     if failure_count:
